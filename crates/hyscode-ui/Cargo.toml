@@ -1,0 +1,28 @@
+[package]
+name        = "hyscode-ui"
+description = "Interface do terminal: streaming, TUI, markdown, syntax highlight"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hyscode-core = { path = "../hyscode-core" }
+
+tokio        = { workspace = true }
+tokio-stream = { workspace = true }
+async-trait  = { workspace = true }
+futures      = { workspace = true }
+ratatui      = { workspace = true }
+crossterm    = { workspace = true }
+console      = { workspace = true }
+indicatif    = { workspace = true }
+dialoguer    = { workspace = true }
+syntect      = { workspace = true }
+pulldown-cmark = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }

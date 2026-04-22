@@ -1,0 +1,22 @@
+[package]
+name        = "hyscode-config"
+description = "Configurações, secrets e keyring do HyscodeCLI"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hyscode-core = { path = "../hyscode-core" }
+
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+toml         = { workspace = true }
+thiserror    = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }
+keyring      = { workspace = true }
+dirs         = { workspace = true }
+once_cell    = { workspace = true }

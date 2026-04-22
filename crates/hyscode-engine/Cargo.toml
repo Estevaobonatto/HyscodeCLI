@@ -1,0 +1,33 @@
+[package]
+name        = "hyscode-engine"
+description = "Orquestração de conversas e loop do agente"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hyscode-core     = { path = "../hyscode-core" }
+hyscode-provider = { path = "../hyscode-provider" }
+hyscode-tools    = { path = "../hyscode-tools" }
+hyscode-config   = { path = "../hyscode-config" }
+
+tokio        = { workspace = true }
+tokio-stream = { workspace = true }
+async-trait  = { workspace = true }
+futures      = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+thiserror    = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }
+sqlx         = { workspace = true }
+uuid         = { workspace = true }
+ulid         = { workspace = true }
+chrono       = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = { workspace = true }

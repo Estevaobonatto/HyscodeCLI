@@ -1,0 +1,22 @@
+[package]
+name        = "hyscode-tools"
+description = "Ferramentas do agente (read, write, search, execute)"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+hyscode-core = { path = "../hyscode-core" }
+
+tokio        = { workspace = true }
+async-trait  = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+thiserror    = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }
+which        = { workspace = true }
+tempfile     = { workspace = true }

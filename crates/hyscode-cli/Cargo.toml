@@ -1,0 +1,39 @@
+[package]
+name        = "hyscode-cli"
+description = "HyscodeCLI — Agente de codificação em linha de comando"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+default-run = "hyscode"
+
+[[bin]]
+name = "hyscode"
+path = "src/main.rs"
+
+[dependencies]
+hyscode-core    = { path = "../hyscode-core" }
+hyscode-engine  = { path = "../hyscode-engine" }
+hyscode-ui      = { path = "../hyscode-ui" }
+hyscode-config  = { path = "../hyscode-config" }
+hyscode-provider = { path = "../hyscode-provider" }
+hyscode-tools   = { path = "../hyscode-tools" }
+
+clap       = { workspace = true }
+tokio      = { workspace = true }
+anyhow     = { workspace = true }
+eyre       = { workspace = true }
+tracing    = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
+ratatui    = { workspace = true }
+crossterm  = { workspace = true }
+futures    = { workspace = true }
+toml       = { workspace = true }
+reqwest    = { workspace = true }
+serde      = { workspace = true }
+dialoguer  = { workspace = true }
+dirs       = { workspace = true }
+async-trait = { workspace = true }

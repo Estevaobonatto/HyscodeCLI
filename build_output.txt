@@ -1,0 +1,219 @@
+warning: unused import: `bytes::Bytes`
+ --> crates\hyscode-provider\src\http\sse.rs:7:5
+  |
+7 | use bytes::Bytes;
+  |     ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `futures::Stream`
+ --> crates\hyscode-provider\src\http\sse.rs:8:5
+  |
+8 | use futures::Stream;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::pin::Pin`
+  --> crates\hyscode-provider\src\http\sse.rs:10:5
+   |
+10 | use std::pin::Pin;
+   |     ^^^^^^^^^^^^^
+
+warning: unused import: `ToolCallDelta`
+  --> crates\hyscode-provider\src\adapters\anthropic.rs:16:66
+   |
+16 | ...onse, Delta, FinishReason, ToolCallDelta},
+   |                               ^^^^^^^^^^^^^
+
+warning: unused import: `ToolCallDelta`
+  --> crates\hyscode-provider\src\adapters\hyscode.rs:16:66
+   |
+16 | ...onse, Delta, FinishReason, ToolCallDelta},
+   |                               ^^^^^^^^^^^^^
+
+warning: field `role` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:505:5
+    |
+501 | struct AnthropicMessageResponse {
+    |        ------------------------ field in this struct
+...
+505 |     role: String,
+    |     ^^^^
+    |
+    = note: `AnthropicMessageResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `index` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:576:5
+    |
+575 | struct AnthropicContentBlockDelta {
+    |        -------------------------- field in this struct
+576 |     index: usize,
+    |     ^^^^^
+    |
+    = note: `AnthropicContentBlockDelta` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `partial_json` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:584:22
+    |
+584 |     InputJsonDelta { partial_json: String },
+    |     --------------   ^^^^^^^^^^^^
+    |     |
+    |     field in this variant
+    |
+    = note: `AnthropicDeltaInner` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `stop_sequence` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:597:5
+    |
+595 | struct AnthropicStopDelta {
+    |        ------------------ field in this struct
+596 |     stop_reason: Option<String>,
+597 |     stop_sequence: Option<String>,
+    |     ^^^^^^^^^^^^^
+    |
+    = note: `AnthropicStopDelta` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `hyscode-provider` (lib) generated 9 warnings (run `cargo fix --lib -p hyscode-provider` to apply 5 suggestions)
+warning: unused import: `async_trait::async_trait`
+  --> crates\hyscode-engine\src\agent.rs:52:5
+   |
+52 | use async_trait::async_trait;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `futures::stream::BoxStream`
+  --> crates\hyscode-engine\src\agent.rs:53:5
+   |
+53 | use futures::stream::BoxStream;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ChatChunk`, `Delta`, `FinishReason`, `ModelInfo`, and `ProviderCapabilities`
+  --> crates\hyscode-engine\src\agent.rs:58:20
+   |
+58 |         provider::{ModelInfo, ProviderCapabilities},
+   |                    ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+59 |         request::ChatRequest,
+60 |         response::{ChatChunk, ChatResponse, Delta, FinishReason},
+   |                    ^^^^^^^^^                ^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `PermissionCallback` and `token::TokenEstimator`
+  --> crates\hyscode-engine\src\agent.rs:72:18
+   |
+72 |     permission::{PermissionCallback, PermissionConfig, PermissionManager},
+   |                  ^^^^^^^^^^^^^^^^^^
+73 |     token::TokenEstimator,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `models::tool::ToolResult`
+  --> crates\hyscode-engine\src\permission.rs:12:38
+   |
+12 | use hyscode_core::{error::ToolError, models::tool::ToolResult};
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tool::Tool`
+  --> crates\hyscode-engine\src\agent.rs:63:34
+   |
+63 |     traits::{provider::Provider, tool::Tool},
+   |                                  ^^^^^^^^^^
+
+warning: unused import: `std::collections::VecDeque`
+ --> crates\hyscode-ui\src\tui\app.rs:1:5
+  |
+1 | use std::collections::VecDeque;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `hyscode_core::models::message::Message`
+ --> crates\hyscode-ui\src\tui\app.rs:3:5
+  |
+3 | use hyscode_core::models::message::Message;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AppStatus`
+ --> crates\hyscode-ui\src\tui\events.rs:4:18
+  |
+4 | use super::app::{AppStatus, ChatApp, Modal, SlashCommand, ThinkingLevel};
+  |                  ^^^^^^^^^
+
+warning: unused import: `backend::Backend`
+ --> crates\hyscode-ui\src\tui\ui.rs:2:5
+  |
+2 |     backend::Backend,
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused variable: `text`
+  --> crates\hyscode-ui\src\tui\events.rs:54:32
+   |
+54 |             } else if let Some(text) = app.submit_input() {
+   |                                ^^^^ help: if this is intentional, prefix it with an underscore: `_text`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `term` and `markdown_enabled` are never read
+  --> crates\hyscode-ui\src\stream.rs:8:5
+   |
+ 7 | pub struct StreamRenderer {
+   |            -------------- fields in this struct
+ 8 |     term: Term,
+   |     ^^^^
+ 9 |     buffer: String,
+10 |     markdown_enabled: bool,
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `draw_confirm_modal` is never used
+   --> crates\hyscode-ui\src\tui\ui.rs:326:4
+    |
+326 | fn draw_confirm_modal(frame: &mut Frame, _app: &ChatApp, message: Stri...
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates\hyscode-ui\src\tui\ui.rs:104:24
+    |
+104 | fn render_message(msg: &ChatMessage) -> Vec<Line> {
+    |                        ^^^^^^^^^^^^         ^^^^ the same lifetime is hidden here
+    |                        |
+    |                        the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+104 | fn render_message(msg: &ChatMessage) -> Vec<Line<'_>> {
+    |                                                 ++++
+
+warning: `hyscode-engine` (lib) generated 6 warnings (run `cargo fix --lib -p hyscode-engine` to apply 5 suggestions)
+warning: `hyscode-ui` (lib) generated 8 warnings (run `cargo fix --lib -p hyscode-ui` to apply 5 suggestions)
+warning: field `expires_in` is never read
+  --> crates\hyscode-cli\src\oauth.rs:82:5
+   |
+78 | struct DeviceCodeResponse {
+   |        ------------------ field in this struct
+...
+82 |     expires_in: u64,
+   |     ^^^^^^^^^^
+   |
+   = note: `DeviceCodeResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `token_type`, `scope`, and `error_description` are never read
+  --> crates\hyscode-cli\src\oauth.rs:89:5
+   |
+87 | struct AccessTokenResponse {
+   |        ------------------- fields in this struct
+88 |     access_token: Option<String>,
+89 |     token_type: Option<String>,
+   |     ^^^^^^^^^^
+90 |     scope: Option<String>,
+   |     ^^^^^
+91 |     error: Option<String>,
+92 |     error_description: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = note: `AccessTokenResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: `hyscode-cli` (bin "hyscode") generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.59s
