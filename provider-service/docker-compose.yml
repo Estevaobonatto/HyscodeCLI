@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       hyscode_gateway
+      POSTGRES_USER:     hyscode
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyscode -d hyscode_gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:   postgres://hyscode:secret@postgres:5432/hyscode_gateway
+      REDIS_URL:      redis://redis:6379
+      LISTEN_ADDR:    0.0.0.0:3000
+      JWT_SECRET:     ${JWT_SECRET:-change_me}
+      MODEL_ROUTES:   ${MODEL_ROUTES:-claude-3-5-sonnet=anthropic,gpt-4o=openai}
+      LOG_LEVEL:      ${LOG_LEVEL:-info}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+
+volumes:
+  postgres_data:

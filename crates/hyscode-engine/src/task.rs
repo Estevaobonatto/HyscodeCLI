@@ -422,52 +422,190 @@ impl TaskRunner {
 }
 
 // ---------------------------------------------------------------------------
-// TaskStore — persistência simples em memória (placeholder para SQLite)
+// TaskStore — persistência SQLite
 // ---------------------------------------------------------------------------
 
-/// Store de tasks — atualmente em memória, futuro: SQLite/ConversationManager.
+/// Store de tasks persistido em SQLite.
 pub struct TaskStore {
-    tasks: Arc<RwLock<Vec<Task>>>,
+    pool: sqlx::SqlitePool,
 }
 
 impl TaskStore {
-    pub fn new() -> Self {
-        Self {
-            tasks: Arc::new(RwLock::new(Vec::new())),
+    /// Abre (ou cria) o banco de dados em `~/.local/share/hyscode/tasks.db`.
+    pub async fn new() -> anyhow::Result<Self> {
+        let db_path = dirs::data_local_dir()
+            .or_else(|| dirs::home_dir().map(|h| h.join(".local").join("share")))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("hyscode")
+            .join("tasks.db");
+
+        if let Some(parent) = db_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
         }
+
+        let url = format!("sqlite://{}?mode=rwc", db_path.to_string_lossy());
+        let pool = sqlx::SqlitePool::connect(&url).await?;
+
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS tasks (
+                id            TEXT    PRIMARY KEY,
+                description   TEXT    NOT NULL,
+                status        TEXT    NOT NULL DEFAULT 'pending',
+                priority      TEXT    NOT NULL DEFAULT 'normal',
+                created_at    INTEGER NOT NULL,
+                started_at    INTEGER,
+                completed_at  INTEGER,
+                result_summary TEXT,
+                error_message  TEXT,
+                iterations     INTEGER NOT NULL DEFAULT 0,
+                tools_used     TEXT    NOT NULL DEFAULT '[]',
+                messages       TEXT    NOT NULL DEFAULT '[]',
+                retry_count    INTEGER NOT NULL DEFAULT 0,
+                max_retries    INTEGER NOT NULL DEFAULT 3
+            )
+            "#,
+        )
+        .execute(&pool)
+        .await?;
+
+        Ok(Self { pool })
     }
 
-    pub async fn save(&self, task: Task) {
-        let mut tasks = self.tasks.write().await;
-        if let Some(idx) = tasks.iter().position(|t| t.id == task.id) {
-            tasks[idx] = task;
-        } else {
-            tasks.push(task);
+    pub async fn save(&self, task: &Task) -> anyhow::Result<()> {
+        let tools_json = serde_json::to_string(&task.tools_used)?;
+        let messages_json = serde_json::to_string(&task.messages)?;
+        let status = task.status.to_string();
+        let priority = serde_json::to_string(&task.priority)?.trim_matches('"').to_owned();
+
+        sqlx::query(
+            r#"
+            INSERT INTO tasks
+                (id, description, status, priority, created_at, started_at, completed_at,
+                 result_summary, error_message, iterations, tools_used, messages, retry_count, max_retries)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                status = excluded.status,
+                started_at = excluded.started_at,
+                completed_at = excluded.completed_at,
+                result_summary = excluded.result_summary,
+                error_message = excluded.error_message,
+                iterations = excluded.iterations,
+                tools_used = excluded.tools_used,
+                messages = excluded.messages,
+                retry_count = excluded.retry_count
+            "#,
+        )
+        .bind(&task.id)
+        .bind(&task.description)
+        .bind(&status)
+        .bind(&priority)
+        .bind(task.created_at)
+        .bind(task.started_at)
+        .bind(task.completed_at)
+        .bind(&task.result_summary)
+        .bind(&task.error_message)
+        .bind(task.iterations as i64)
+        .bind(&tools_json)
+        .bind(&messages_json)
+        .bind(task.retry_count as i64)
+        .bind(task.max_retries as i64)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get(&self, task_id: &str) -> anyhow::Result<Option<Task>> {
+        let row: Option<(String, String, String, String, i64, Option<i64>, Option<i64>,
+                         Option<String>, Option<String>, i64, String, String, i64, i64)> =
+            sqlx::query_as(
+                r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
+                          result_summary, error_message, iterations, tools_used, messages,
+                          retry_count, max_retries
+                   FROM tasks WHERE id = ?"#,
+            )
+            .bind(task_id)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(Self::row_to_task))
+    }
+
+    pub async fn list(&self) -> anyhow::Result<Vec<Task>> {
+        let rows: Vec<(String, String, String, String, i64, Option<i64>, Option<i64>,
+                       Option<String>, Option<String>, i64, String, String, i64, i64)> =
+            sqlx::query_as(
+                r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
+                          result_summary, error_message, iterations, tools_used, messages,
+                          retry_count, max_retries
+                   FROM tasks ORDER BY created_at DESC"#,
+            )
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows.into_iter().map(Self::row_to_task).collect())
+    }
+
+    pub async fn list_by_status(&self, status: TaskStatus) -> anyhow::Result<Vec<Task>> {
+        let status_str = status.to_string();
+        let rows: Vec<(String, String, String, String, i64, Option<i64>, Option<i64>,
+                       Option<String>, Option<String>, i64, String, String, i64, i64)> =
+            sqlx::query_as(
+                r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
+                          result_summary, error_message, iterations, tools_used, messages,
+                          retry_count, max_retries
+                   FROM tasks WHERE status = ? ORDER BY created_at DESC"#,
+            )
+            .bind(&status_str)
+            .fetch_all(&self.pool)
+            .await?;
+
+        Ok(rows.into_iter().map(Self::row_to_task).collect())
+    }
+
+    fn row_to_task(
+        row: (String, String, String, String, i64, Option<i64>, Option<i64>,
+              Option<String>, Option<String>, i64, String, String, i64, i64),
+    ) -> Task {
+        let (id, description, status_str, priority_str, created_at, started_at, completed_at,
+             result_summary, error_message, iterations, tools_used_json, messages_json,
+             retry_count, max_retries) = row;
+
+        let status = match status_str.as_str() {
+            "running" => TaskStatus::Running,
+            "completed" => TaskStatus::Completed,
+            "failed" => TaskStatus::Failed,
+            "cancelled" => TaskStatus::Cancelled,
+            _ => TaskStatus::Pending,
+        };
+
+        let priority = match priority_str.as_str() {
+            "low" => TaskPriority::Low,
+            "high" => TaskPriority::High,
+            "critical" => TaskPriority::Critical,
+            _ => TaskPriority::Normal,
+        };
+
+        let tools_used: Vec<String> = serde_json::from_str(&tools_used_json).unwrap_or_default();
+        let messages: Vec<Message> = serde_json::from_str(&messages_json).unwrap_or_default();
+
+        Task {
+            id,
+            description,
+            status,
+            priority,
+            created_at,
+            started_at,
+            completed_at,
+            result_summary,
+            error_message,
+            iterations: iterations as u32,
+            tools_used,
+            messages,
+            retry_count: retry_count as u32,
+            max_retries: max_retries as u32,
         }
-    }
-
-    pub async fn get(&self, task_id: &str) -> Option<Task> {
-        self.tasks.read().await.iter().find(|t| t.id == task_id).cloned()
-    }
-
-    pub async fn list(&self) -> Vec<Task> {
-        self.tasks.read().await.clone()
-    }
-
-    pub async fn list_by_status(&self, status: TaskStatus) -> Vec<Task> {
-        self.tasks
-            .read()
-            .await
-            .iter()
-            .filter(|t| t.status == status)
-            .cloned()
-            .collect()
-    }
-}
-
-impl Default for TaskStore {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

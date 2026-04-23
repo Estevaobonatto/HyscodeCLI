@@ -2,7 +2,7 @@
 //!
 //! Entry point do binário. Parse de argumentos e dispatch para comandos.
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 mod commands;
 mod oauth;
@@ -74,11 +74,39 @@ enum Commands {
     /// Inicializa o HyscodeCLI no diretório atual
     Init,
 
+    /// Lista o histórico de conversas
+    History {
+        /// Número de conversas a exibir
+        #[arg(long, short = 'n', default_value = "20")]
+        limit: usize,
+    },
+
+    /// Desfaz a(s) última(s) escrita(s) de arquivo pelo agente
+    Undo {
+        /// Quantas operações desfazer
+        #[arg(default_value = "1")]
+        steps: usize,
+    },
+
+    /// Revisa o diff atual com o LLM
+    Review {
+        /// Revisar apenas mudanças staged (padrão: todas as mudanças)
+        #[arg(long, short = 's')]
+        staged: bool,
+    },
+
     /// Gera mensagem de commit para o repositório atual
     Commit {
         /// Stage automaticamente os arquivos modificados
         #[arg(long, short = 'a')]
         all: bool,
+    },
+
+    /// Gera script de autocompleção para o shell especificado
+    Completions {
+        /// Shell alvo (bash, zsh, fish, powershell, elvish)
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
     },
 }
 
@@ -100,6 +128,8 @@ enum ProviderAction {
     Test { name: String },
     /// Autentica via OAuth (GitHub Copilot)
     Login { name: String },
+    /// Lista modelos disponíveis de um provedor
+    Models { name: String },
 }
 
 #[derive(Subcommand)]
@@ -136,7 +166,16 @@ async fn main() -> anyhow::Result<()> {
             commands::config::run(action).await
         }
         Commands::Init => commands::init::run().await,
+        Commands::History { limit } => commands::history::run(limit).await,
+        Commands::Undo { steps } => commands::undo::run(steps).await,
+        Commands::Review { staged } => {
+            commands::review::run(staged, cli.provider, cli.model).await
+        }
         Commands::Commit { all } => commands::commit::run(all).await,
+        Commands::Completions { shell } => {
+            commands::completions::run(shell);
+            Ok(())
+        }
     }
 }
 

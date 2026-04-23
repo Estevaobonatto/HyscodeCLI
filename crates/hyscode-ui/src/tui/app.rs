@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use hyscode_core::models::message::Message;
+use hyscode_core::models::usage::TokenUsage;
 
 /// Estado da aplicação de chat TUI.
 pub struct ChatApp {
@@ -17,6 +18,10 @@ pub struct ChatApp {
     pub show_help: bool,
     pub exit: bool,
     pub pending_command: Option<SlashCommand>,
+    /// System prompt customizado pelo ContextBuilder.
+    pub system_prompt: Option<String>,
+    /// Uso de tokens da última resposta.
+    pub token_usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, Clone)]
@@ -141,9 +146,21 @@ impl ChatApp {
             show_help: false,
             exit: false,
             pending_command: None,
+            system_prompt: None,
+            token_usage: None,
         };
         app.add_system_message("Bem-vindo ao Hyscode! Digite /help para ver os comandos disponíveis.");
         app
+    }
+
+    /// Define o system prompt customizado para esta sessão.
+    pub fn set_system_prompt(&mut self, prompt: String) {
+        self.system_prompt = Some(prompt);
+    }
+
+    /// Atualiza o uso de tokens com dados do último chunk.
+    pub fn update_token_usage(&mut self, usage: TokenUsage) {
+        self.token_usage = Some(usage);
     }
 
     pub fn add_message(&mut self, role: MessageRole, content: impl Into<String>) {

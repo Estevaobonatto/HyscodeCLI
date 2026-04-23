@@ -151,12 +151,29 @@ impl Tool for ExecuteCommandTool {
             tool: self.name().to_owned(),
             reason: "campo 'command' obrigatório".to_owned(),
         })?;
-        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30);
+        let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30).min(300);
+
+        // Rejeita comandos que contenham tentativas de escalonamento de privilégios.
+        let blocked = ["sudo", "su ", "su\t", "pkexec", "doas", "runas"];
+        let cmd_lower = command.to_lowercase();
+        if blocked.iter().any(|b| cmd_lower.contains(b)) {
+            return Err(ToolError::PermissionDenied(
+                "comandos de escalonamento de privilégios não são permitidos.".to_owned(),
+            ));
+        }
+
+        // Usa shell nativo para suportar pipes/redirecionamentos, mas com timeout fixo.
+        let (shell, shell_flag) = if cfg!(windows) {
+            ("cmd", "/C")
+        } else {
+            ("sh", "-c")
+        };
 
         let output = tokio::time::timeout(
             std::time::Duration::from_secs(timeout_secs),
-            tokio::process::Command::new(if cfg!(windows) { "cmd" } else { "sh" })
-                .args(if cfg!(windows) { vec!["/C", command] } else { vec!["-c", command] })
+            tokio::process::Command::new(shell)
+                .arg(shell_flag)
+                .arg(command)
                 .output(),
         )
         .await

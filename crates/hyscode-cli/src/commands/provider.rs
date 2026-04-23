@@ -66,6 +66,26 @@ pub async fn run(action: crate::ProviderAction) -> anyhow::Result<()> {
         crate::ProviderAction::Login { name } => {
             run_login(name).await?;
         }
+        crate::ProviderAction::Models { name } => {
+            let config = load_config().unwrap_or_default();
+            let registry = crate::commands::providers::build_registry(&config).await?;
+            let provider = registry
+                .get(&name)
+                .ok_or_else(|| anyhow::anyhow!(
+                    "Provedor '{}' não configurado.",
+                    name
+                ))?;
+            let models = provider.list_models().await
+                .map_err(|e| anyhow::anyhow!("Erro ao listar modelos: {}", e))?;
+            if models.is_empty() {
+                println!("Nenhum modelo encontrado para '{}'.", name);
+            } else {
+                println!("Modelos disponíveis em '{}':", name);
+                for m in models {
+                    println!("  {:40}  ctx: {} tokens", m.id, m.context_window);
+                }
+            }
+        }
     }
     Ok(())
 }

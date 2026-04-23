@@ -1,0 +1,47 @@
+[package]
+name        = "hyscode-gateway"
+description = "Provider Service HTTP gateway — proxies LLM requests with auth and billing"
+version.workspace    = true
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "hyscode-gateway"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace deps
+tokio        = { workspace = true }
+tokio-stream = { workspace = true }
+axum         = { workspace = true }
+axum-extra   = { workspace = true }
+tower        = { workspace = true }
+tower-http   = { workspace = true }
+sqlx         = { workspace = true }
+redis        = { workspace = true }
+jsonwebtoken = { workspace = true }
+argon2       = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+anyhow       = { workspace = true }
+thiserror    = { workspace = true }
+tracing      = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid         = { workspace = true }
+chrono       = { workspace = true }
+bytes        = { workspace = true }
+once_cell    = { workspace = true }
+dotenvy      = { workspace = true }
+async-trait  = { workspace = true }
+
+# HTTP client for upstream LLM calls
+reqwest      = { version = "0.12", features = ["rustls-tls", "json", "stream"] }
+futures      = "0.3"
+hex          = "0.4"
+sha2         = "0.10"
+
+[dev-dependencies]
+tokio-test   = "0.4"

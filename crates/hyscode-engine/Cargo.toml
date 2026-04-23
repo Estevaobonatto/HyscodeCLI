@@ -27,6 +27,7 @@ sqlx         = { workspace = true }
 uuid         = { workspace = true }
 ulid         = { workspace = true }
 chrono       = { workspace = true }
+dirs         = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

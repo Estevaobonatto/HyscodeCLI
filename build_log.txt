@@ -1,0 +1,365 @@
+   Compiling hyscode-tools v0.1.0 (D:\HyscodeCLI\crates\hyscode-tools)
+   Compiling hyscode-provider v0.1.0 (D:\HyscodeCLI\crates\hyscode-provider)
+   Compiling hyscode-ui v0.1.0 (D:\HyscodeCLI\crates\hyscode-ui)
+warning: unused import: `std::collections::VecDeque`
+ --> crates\hyscode-ui\src\tui\app.rs:1:5
+  |
+1 | use std::collections::VecDeque;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `hyscode_core::models::message::Message`
+ --> crates\hyscode-ui\src\tui\app.rs:3:5
+  |
+3 | use hyscode_core::models::message::Message;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AppStatus`
+ --> crates\hyscode-ui\src\tui\events.rs:4:18
+  |
+4 | use super::app::{AppStatus, ChatApp, Modal, SlashCommand, ThinkingLevel};
+  |                  ^^^^^^^^^
+
+warning: unused import: `backend::Backend`
+ --> crates\hyscode-ui\src\tui\ui.rs:2:5
+  |
+2 |     backend::Backend,
+  |     ^^^^^^^^^^^^^^^^
+
+warning: unused variable: `text`
+  --> crates\hyscode-ui\src\tui\events.rs:54:32
+   |
+54 |             } else if let Some(text) = app.submit_input() {
+   |                                ^^^^ help: if this is intentional, prefix it with an underscore: `_text`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `bytes::Bytes`
+ --> crates\hyscode-provider\src\http\sse.rs:7:5
+  |
+7 | use bytes::Bytes;
+  |     ^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `futures::Stream`
+ --> crates\hyscode-provider\src\http\sse.rs:8:5
+  |
+8 | use futures::Stream;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `std::pin::Pin`
+  --> crates\hyscode-provider\src\http\sse.rs:10:5
+   |
+10 | use std::pin::Pin;
+   |     ^^^^^^^^^^^^^
+
+warning: unused import: `ToolCallDelta`
+  --> crates\hyscode-provider\src\adapters\anthropic.rs:16:66
+   |
+16 |         response::{ChatChunk, ChatResponse, Delta, FinishReason, ToolCallDelta},
+   |                                                                  ^^^^^^^^^^^^^
+
+warning: unused import: `ToolCallDelta`
+  --> crates\hyscode-provider\src\adapters\hyscode.rs:16:66
+   |
+16 |         response::{ChatChunk, ChatResponse, Delta, FinishReason, ToolCallDelta},
+   |                                                                  ^^^^^^^^^^^^^
+
+warning: fields `term` and `markdown_enabled` are never read
+  --> crates\hyscode-ui\src\stream.rs:8:5
+   |
+ 7 | pub struct StreamRenderer {
+   |            -------------- fields in this struct
+ 8 |     term: Term,
+   |     ^^^^
+ 9 |     buffer: String,
+10 |     markdown_enabled: bool,
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `draw_confirm_modal` is never used
+   --> crates\hyscode-ui\src\tui\ui.rs:326:4
+    |
+326 | fn draw_confirm_modal(frame: &mut Frame, _app: &ChatApp, message: String, area: Rect) {
+    |    ^^^^^^^^^^^^^^^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> crates\hyscode-ui\src\tui\ui.rs:104:24
+    |
+104 | fn render_message(msg: &ChatMessage) -> Vec<Line> {
+    |                        ^^^^^^^^^^^^         ^^^^ the same lifetime is hidden here
+    |                        |
+    |                        the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+104 | fn render_message(msg: &ChatMessage) -> Vec<Line<'_>> {
+    |                                                 ++++
+
+warning: field `role` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:505:5
+    |
+501 | struct AnthropicMessageResponse {
+    |        ------------------------ field in this struct
+...
+505 |     role: String,
+    |     ^^^^
+    |
+    = note: `AnthropicMessageResponse` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: field `index` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:576:5
+    |
+575 | struct AnthropicContentBlockDelta {
+    |        -------------------------- field in this struct
+576 |     index: usize,
+    |     ^^^^^
+    |
+    = note: `AnthropicContentBlockDelta` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `partial_json` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:584:22
+    |
+584 |     InputJsonDelta { partial_json: String },
+    |     --------------   ^^^^^^^^^^^^
+    |     |
+    |     field in this variant
+    |
+    = note: `AnthropicDeltaInner` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `stop_sequence` is never read
+   --> crates\hyscode-provider\src\adapters\anthropic.rs:597:5
+    |
+595 | struct AnthropicStopDelta {
+    |        ------------------ field in this struct
+596 |     stop_reason: Option<String>,
+597 |     stop_sequence: Option<String>,
+    |     ^^^^^^^^^^^^^
+    |
+    = note: `AnthropicStopDelta` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+   Compiling hyscode-engine v0.1.0 (D:\HyscodeCLI\crates\hyscode-engine)
+warning: unused import: `async_trait::async_trait`
+  --> crates\hyscode-engine\src\agent.rs:52:5
+   |
+52 | use async_trait::async_trait;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `futures::stream::BoxStream`
+  --> crates\hyscode-engine\src\agent.rs:53:5
+   |
+53 | use futures::stream::BoxStream;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ChatChunk`, `Delta`, `FinishReason`, `ModelInfo`, and `ProviderCapabilities`
+  --> crates\hyscode-engine\src\agent.rs:58:20
+   |
+58 |         provider::{ModelInfo, ProviderCapabilities},
+   |                    ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+59 |         request::ChatRequest,
+60 |         response::{ChatChunk, ChatResponse, Delta, FinishReason},
+   |                    ^^^^^^^^^                ^^^^^  ^^^^^^^^^^^^
+
+warning: unused imports: `PermissionCallback` and `token::TokenEstimator`
+  --> crates\hyscode-engine\src\agent.rs:72:18
+   |
+72 |     permission::{PermissionCallback, PermissionConfig, PermissionManager},
+   |                  ^^^^^^^^^^^^^^^^^^
+73 |     token::TokenEstimator,
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `models::tool::ToolResult`
+  --> crates\hyscode-engine\src\permission.rs:12:38
+   |
+12 | use hyscode_core::{error::ToolError, models::tool::ToolResult};
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tool::Tool`
+  --> crates\hyscode-engine\src\agent.rs:63:34
+   |
+63 |     traits::{provider::Provider, tool::Tool},
+   |                                  ^^^^^^^^^^
+
+warning: `hyscode-provider` (lib) generated 9 warnings (run `cargo fix --lib -p hyscode-provider` to apply 5 suggestions)
+warning: `hyscode-ui` (lib) generated 8 warnings (run `cargo fix --lib -p hyscode-ui` to apply 5 suggestions)
+warning: `hyscode-engine` (lib) generated 6 warnings (run `cargo fix --lib -p hyscode-engine` to apply 5 suggestions)
+   Compiling hyscode-cli v0.1.0 (D:\HyscodeCLI\crates\hyscode-cli)
+error[E0428]: the name `conversations_db_path` is defined multiple times
+   --> crates\hyscode-cli\src\commands\chat.rs:376:1
+    |
+ 28 | fn conversations_db_path() -> std::path::PathBuf {
+    | ------------------------------------------------ previous definition of the value `conversations_db_path` here
+...
+376 | fn conversations_db_path() -> std::path::PathBuf {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `conversations_db_path` redefined here
+    |
+    = note: `conversations_db_path` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `run` is defined multiple times
+   --> crates\hyscode-cli\src\commands\chat.rs:383:1
+    |
+ 41 | / pub async fn run(
+ 42 | |     message: Option<String>,
+ 43 | |     context: Vec<String>,
+ 44 | |     provider_override: Option<String>,
+...   |
+141 | |     result
+142 | | }
+    | |_- previous definition of the value `run` here
+...
+383 | / pub async fn run(
+384 | |     message: Option<String>,
+385 | |     _context: Vec<String>,
+386 | |     provider_override: Option<String>,
+...   |
+448 | |     result
+449 | | }
+    | |_^ `run` redefined here
+    |
+    = note: `run` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `run_chat_loop` is defined multiple times
+   --> crates\hyscode-cli\src\commands\chat.rs:451:1
+    |
+203 | / async fn run_chat_loop<B: Backend>(
+204 | |     terminal: &mut Terminal<B>,
+205 | |     app: &mut ChatApp,
+206 | |     provider: &Arc<dyn Provider>,
+...   |
+243 | | }
+    | |_- previous definition of the value `run_chat_loop` here
+...
+451 | / async fn run_chat_loop<B: Backend>(
+452 | |     terminal: &mut Terminal<B>,
+453 | |     app: &mut ChatApp,
+454 | |     provider: &Arc<dyn Provider>,
+...   |
+489 | | }
+    | |_^ `run_chat_loop` redefined here
+    |
+    = note: `run_chat_loop` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `process_message` is defined multiple times
+   --> crates\hyscode-cli\src\commands\chat.rs:491:1
+    |
+245 | / async fn process_message<B: Backend>(
+246 | |     provider: &Arc<dyn Provider>,
+247 | |     model: &str,
+248 | |     text: String,
+...   |
+339 | |     Ok(())
+340 | | }
+    | |_- previous definition of the value `process_message` here
+...
+491 | / async fn process_message<B: Backend>(
+492 | |     provider: &Arc<dyn Provider>,
+493 | |     model: &str,
+494 | |     text: String,
+...   |
+562 | |     Ok(())
+563 | | }
+    | |_^ `process_message` redefined here
+    |
+    = note: `process_message` must be defined only once in the value namespace of this module
+
+error[E0428]: the name `build_messages` is defined multiple times
+   --> crates\hyscode-cli\src\commands\chat.rs:565:1
+    |
+342 | fn build_messages(app: &ChatApp) -> Vec<Message> {
+    | ------------------------------------------------ previous definition of the value `build_messages` here
+...
+565 | fn build_messages(app: &ChatApp) -> Vec<Message> {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `build_messages` redefined here
+    |
+    = note: `build_messages` must be defined only once in the value namespace of this module
+
+error[E0061]: this function takes 8 arguments but 7 arguments were supplied
+   --> crates\hyscode-cli\src\commands\chat.rs:422:22
+    |
+422 |           let result = process_message(
+    |  ______________________^^^^^^^^^^^^^^^-
+423 | |             &provider,
+424 | |             &model,
+425 | |             msg,
+...   |
+429 | |             &conv_id,
+430 | |         )
+    | |_________- argument #8 of type `&hyscode_engine::ContextBuilder` is missing
+    |
+note: function defined here
+   --> crates\hyscode-cli\src\commands\chat.rs:245:10
+    |
+245 | async fn process_message<B: Backend>(
+    |          ^^^^^^^^^^^^^^^
+...
+253 |     ctx_builder: &ContextBuilder,
+    |     ----------------------------
+help: provide the argument
+    |
+422 |         let result = process_message(
+...
+429 |             &conv_id,
+430 ~             /* &hyscode_engine::ContextBuilder */,
+431 ~         )
+    |
+
+error[E0061]: this function takes 7 arguments but 6 arguments were supplied
+   --> crates\hyscode-cli\src\commands\chat.rs:438:9
+    |
+438 |         run_chat_loop(&mut terminal, &mut app, &provider, &model, &conv_manager, &conv_id).await;
+    |         ^^^^^^^^^^^^^--------------------------------------------------------------------- argument #7 of type `&hyscode_engine::ContextBuilder` is missing
+    |
+note: function defined here
+   --> crates\hyscode-cli\src\commands\chat.rs:203:10
+    |
+203 | async fn run_chat_loop<B: Backend>(
+    |          ^^^^^^^^^^^^^
+...
+210 |     ctx_builder: &ContextBuilder,
+    |     ----------------------------
+help: provide the argument
+    |
+438 |         run_chat_loop(&mut terminal, &mut app, &provider, &model, &conv_manager, &conv_id, /* &hyscode_engine::ContextBuilder */).await;
+    |                                                                                          +++++++++++++++++++++++++++++++++++++++
+
+error[E0061]: this function takes 8 arguments but 7 arguments were supplied
+   --> crates\hyscode-cli\src\commands\chat.rs:468:37
+    |
+468 |                       if let Err(e) = process_message(
+    |  _____________________________________^^^^^^^^^^^^^^^-
+469 | |                         provider,
+470 | |                         model,
+471 | |                         text,
+...   |
+475 | |                         conv_id,
+476 | |                     )
+    | |_____________________- argument #8 of type `&hyscode_engine::ContextBuilder` is missing
+    |
+note: function defined here
+   --> crates\hyscode-cli\src\commands\chat.rs:245:10
+    |
+245 | async fn process_message<B: Backend>(
+    |          ^^^^^^^^^^^^^^^
+...
+253 |     ctx_builder: &ContextBuilder,
+    |     ----------------------------
+help: provide the argument
+    |
+468 |                     if let Err(e) = process_message(
+...
+475 |                         conv_id,
+476 ~                         /* &hyscode_engine::ContextBuilder */,
+477 ~                     )
+    |
+
+Some errors have detailed explanations: E0061, E0428.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `hyscode-cli` (bin "hyscode") due to 8 previous errors

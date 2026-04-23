@@ -4,4 +4,8 @@ pub mod provider;
 pub mod config;
 pub mod init;
 pub mod commit;
+pub mod completions;
 pub mod providers;
+pub mod history;
+pub mod undo;
+pub mod review;

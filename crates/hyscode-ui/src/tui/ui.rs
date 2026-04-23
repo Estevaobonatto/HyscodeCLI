@@ -142,10 +142,18 @@ fn draw_input_bar(frame: &mut Frame, app: &ChatApp, area: Rect) {
         Color::Gray
     };
 
+    let token_info = match &app.token_usage {
+        Some(u) if u.total_tokens > 0 => format!(
+            " Tokens: {}↑ {}↓ ",
+            u.prompt_tokens, u.completion_tokens
+        ),
+        _ => " Mensagem ".to_owned(),
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
-        .title(Span::styled(" Mensagem ", Style::default().fg(Color::Gray)));
+        .title(Span::styled(token_info, Style::default().fg(Color::DarkGray)));
 
     let input = Paragraph::new(app.input.as_str())
         .style(Style::default().fg(Color::White))

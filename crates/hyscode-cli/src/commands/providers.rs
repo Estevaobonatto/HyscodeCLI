@@ -149,3 +149,36 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
 
     Ok(registry)
 }
+
+/// Resolve um alias de modelo (`fast`, `smart`, `code`, `ultra`) para o nome real.
+/// Se o alias não é reconhecido, retorna o original.
+pub fn resolve_model_alias(model: &str, provider: &str) -> String {
+    match model {
+        "fast" => match provider {
+            "anthropic" => "claude-3-5-haiku-20241022",
+            "openai" | "copilot" => "gpt-4o-mini",
+            "openrouter" => "openai/gpt-4o-mini",
+            _ => model,
+        },
+        "smart" => match provider {
+            "anthropic" => "claude-3-5-sonnet-20241022",
+            "openai" | "copilot" => "gpt-4o",
+            "openrouter" => "anthropic/claude-3-5-sonnet",
+            _ => model,
+        },
+        "ultra" => match provider {
+            "anthropic" => "claude-opus-4-5",
+            "openai" | "copilot" => "gpt-4.5-preview",
+            "openrouter" => "anthropic/claude-opus-4-5",
+            _ => model,
+        },
+        "code" => match provider {
+            "anthropic" => "claude-3-5-sonnet-20241022",
+            "openai" | "copilot" => "gpt-4o",
+            "openrouter" => "openai/gpt-4o",
+            _ => model,
+        },
+        _ => model,
+    }
+    .to_owned()
+}

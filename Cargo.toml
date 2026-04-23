@@ -39,6 +39,7 @@ toml           = "0.8"
 
 # CLI
 clap           = { version = "4", features = ["derive", "env", "color", "wrap_help"] }
+clap_complete  = "4"
 
 # Terminal UI
 ratatui        = "0.27"

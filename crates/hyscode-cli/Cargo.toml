@@ -22,6 +22,7 @@ hyscode-provider = { path = "../hyscode-provider" }
 hyscode-tools   = { path = "../hyscode-tools" }
 
 clap       = { workspace = true }
+clap_complete = { workspace = true }
 tokio      = { workspace = true }
 anyhow     = { workspace = true }
 eyre       = { workspace = true }
@@ -36,4 +37,5 @@ reqwest    = { workspace = true }
 serde      = { workspace = true }
 dialoguer  = { workspace = true }
 dirs       = { workspace = true }
+chrono     = { workspace = true }
 async-trait = { workspace = true }
