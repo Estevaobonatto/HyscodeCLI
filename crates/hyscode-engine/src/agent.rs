@@ -48,28 +48,27 @@
 //! - Permissão negada → modelo recebe mensagem de erro
 //! - Timeout → loop aborta com erro parcial
 
-use std::sync::Arc;
-use async_trait::async_trait;
-use futures::stream::BoxStream;
 use hyscode_core::{
     error::{ProviderError, ToolError},
     models::{
         message::{Message, MessageContent},
-        provider::{ModelInfo, ProviderCapabilities},
         request::ChatRequest,
-        response::{ChatChunk, ChatResponse, Delta, FinishReason},
+        response::ChatResponse,
         tool::{ToolCall, ToolResult},
     },
-    traits::{provider::Provider, tool::Tool},
+    traits::provider::Provider,
 };
 use hyscode_tools::ToolRegistry;
 use serde_json::Value;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 
 use crate::{
+    audit::AuditLog,
     context::ContextBuilder,
-    permission::{PermissionCallback, PermissionConfig, PermissionManager},
+    permission::{PermissionConfig, PermissionManager},
+    summarize::maybe_summarize,
     token::TokenEstimator,
 };
 
@@ -111,18 +110,51 @@ impl Default for AgentConfig {
 /// Evento emitido pelo AgentLoop para observadores externos.
 #[derive(Debug, Clone)]
 pub enum AgentEvent {
-    LoopStarted { task: String },
-    IterationStarted { iteration: u32, max: u32 },
-    ProviderCalled { model: String, message_count: usize },
-    ProviderResponded { content_preview: Option<String>, tool_calls_count: usize },
-    ToolExecuting { name: String, args: Value },
-    ToolExecuted { name: String, success: bool, preview: String },
-    PermissionRequested { tool: String, args: Value },
-    PermissionGranted { tool: String },
-    PermissionDenied { tool: String, reason: String },
-    LoopFinished { success: bool, iterations: u32 },
-    LoopError { error: String },
-    MessageAdded { role: String },
+    LoopStarted {
+        task: String,
+    },
+    IterationStarted {
+        iteration: u32,
+        max: u32,
+    },
+    ProviderCalled {
+        model: String,
+        message_count: usize,
+    },
+    ProviderResponded {
+        content_preview: Option<String>,
+        tool_calls_count: usize,
+    },
+    ToolExecuting {
+        name: String,
+        args: Value,
+    },
+    ToolExecuted {
+        name: String,
+        success: bool,
+        preview: String,
+    },
+    PermissionRequested {
+        tool: String,
+        args: Value,
+    },
+    PermissionGranted {
+        tool: String,
+    },
+    PermissionDenied {
+        tool: String,
+        reason: String,
+    },
+    LoopFinished {
+        success: bool,
+        iterations: u32,
+    },
+    LoopError {
+        error: String,
+    },
+    MessageAdded {
+        role: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +181,8 @@ pub struct AgentLoop {
     config: AgentConfig,
     permission_manager: PermissionManager,
     event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
+    audit_log: AuditLog,
+    token_estimator: TokenEstimator,
 }
 
 impl AgentLoop {
@@ -174,6 +208,8 @@ impl AgentLoop {
             config,
             permission_manager,
             event_tx: None,
+            audit_log: AuditLog::new(),
+            token_estimator: TokenEstimator::new(128_000),
         }
     }
 
@@ -186,6 +222,18 @@ impl AgentLoop {
     /// Substitui o PermissionManager (útil para testes ou UI custom).
     pub fn with_permission_manager(mut self, pm: PermissionManager) -> Self {
         self.permission_manager = pm;
+        self
+    }
+
+    /// Injeta um AuditLog customizado.
+    pub fn with_audit_log(mut self, audit: AuditLog) -> Self {
+        self.audit_log = audit;
+        self
+    }
+
+    /// Injeta um TokenEstimator customizado.
+    pub fn with_token_estimator(mut self, estimator: TokenEstimator) -> Self {
+        self.token_estimator = estimator;
         self
     }
 
@@ -228,7 +276,19 @@ impl AgentLoop {
                 max: self.config.max_iterations,
             });
 
-            // 2a. Prepara request com tool schemas
+            // 2a. Auto-sumarização se contexto excede limite
+            if let Ok(Some(condensed)) = maybe_summarize(
+                &messages,
+                self.provider.clone(),
+                &self.config.model,
+                &self.token_estimator,
+            )
+            .await
+            {
+                messages = condensed;
+            }
+
+            // 2b. Prepara request com tool schemas
             let tool_defs = self.tool_registry.to_definitions();
             let request = ChatRequest::new(self.config.model.clone(), messages.clone())
                 .with_tools(tool_defs)
@@ -240,7 +300,7 @@ impl AgentLoop {
                 message_count: messages.len(),
             });
 
-            // 2b. Chama provider
+            // 2c. Chama provider
             let response = match self.call_provider(request).await {
                 Ok(resp) => resp,
                 Err(e) => {
@@ -265,9 +325,12 @@ impl AgentLoop {
                 tool_calls_count: response.tool_calls.as_ref().map(|v| v.len()).unwrap_or(0),
             });
 
-            // 2c. Se modelo retornou texto → tarefa concluída
+            // 2d. Se modelo retornou texto → tarefa concluída
             if !has_tool_calls {
-                info!(iterations = iterations, "AgentLoop concluído sem tool_calls");
+                info!(
+                    iterations = iterations,
+                    "AgentLoop concluído sem tool_calls"
+                );
                 self.emit(AgentEvent::LoopFinished {
                     success: true,
                     iterations,
@@ -286,7 +349,7 @@ impl AgentLoop {
                 });
             }
 
-            // 2d. Modelo pediu tool_calls → executa cada uma
+            // 2e. Modelo pediu tool_calls → executa cada uma
             let tool_calls = response.tool_calls.unwrap_or_default();
             messages.push(Message::Assistant {
                 content: content_preview,
@@ -306,7 +369,7 @@ impl AgentLoop {
                 all_tool_results.push((call, result));
             }
 
-            // 2e. Converte resultados em mensagens Tool
+            // 2f. Converte resultados em mensagens Tool
             for (call, result) in all_tool_results {
                 let tool_result = match result {
                     Ok(tr) => tr,
@@ -353,8 +416,7 @@ impl AgentLoop {
                     warn!(attempt = attempt, error = %e, "provider error, retrying");
                     last_error = Some(e);
                     if attempt < max_retries - 1 {
-                        tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt)))
-                            .await;
+                        tokio::time::sleep(std::time::Duration::from_secs(2u64.pow(attempt))).await;
                     }
                 }
             }
@@ -366,7 +428,7 @@ impl AgentLoop {
     /// Executa uma única tool_call com permission check.
     async fn execute_tool_call(&self, call: &ToolCall) -> Result<ToolResult, ToolError> {
         let tool_name = &call.name;
-        let args = call.parse_args().unwrap_or_else(|_| Value::Null);
+        let args = call.parse_args().unwrap_or(Value::Null);
 
         self.emit(AgentEvent::ToolExecuting {
             name: tool_name.clone(),
@@ -402,12 +464,15 @@ impl AgentLoop {
                     tool: tool_name.clone(),
                     reason: e.to_string(),
                 });
+                self.audit_log
+                    .log_denied(tool_name, args.clone(), e.to_string(), None)
+                    .await;
                 return Err(e);
             }
         }
 
         // Executa a tool
-        let result = tool.execute(args).await;
+        let result = tool.execute(args.clone()).await;
 
         match &result {
             Ok(tr) => {
@@ -421,6 +486,13 @@ impl AgentLoop {
                     success: !tr.is_error,
                     preview,
                 });
+                if tr.is_error {
+                    self.audit_log
+                        .log_failure(tool_name, args, &tr.content, None)
+                        .await;
+                } else {
+                    self.audit_log.log_success(tool_name, args, None).await;
+                }
             }
             Err(e) => {
                 self.emit(AgentEvent::ToolExecuted {
@@ -428,6 +500,9 @@ impl AgentLoop {
                     success: false,
                     preview: e.to_string(),
                 });
+                self.audit_log
+                    .log_failure(tool_name, args, e.to_string(), None)
+                    .await;
             }
         }
 
@@ -440,6 +515,16 @@ impl AgentLoop {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
+use async_trait::async_trait;
+#[cfg(test)]
+use futures::stream::BoxStream;
+#[cfg(test)]
+use hyscode_core::models::{
+    provider::{ModelInfo, ProviderCapabilities},
+    response::{ChatChunk, Delta, FinishReason},
+};
+
+#[cfg(test)]
 pub struct MockProvider {
     pub responses: std::sync::Mutex<Vec<ChatResponse>>,
     pub call_count: std::sync::Mutex<usize>,
@@ -448,7 +533,9 @@ pub struct MockProvider {
 #[cfg(test)]
 #[async_trait]
 impl Provider for MockProvider {
-    fn name(&self) -> &str { "mock" }
+    fn name(&self) -> &str {
+        "mock"
+    }
 
     fn capabilities(&self) -> ProviderCapabilities {
         ProviderCapabilities {
@@ -463,7 +550,7 @@ impl Provider for MockProvider {
 
     async fn chat(&self, _request: ChatRequest) -> Result<ChatResponse, ProviderError> {
         let mut count = self.call_count.lock().unwrap();
-        let mut responses = self.responses.lock().unwrap();
+        let responses = self.responses.lock().unwrap();
         let idx = *count % responses.len();
         *count += 1;
         Ok(responses[idx].clone())
@@ -473,7 +560,19 @@ impl Provider for MockProvider {
         &self,
         _request: ChatRequest,
     ) -> Result<BoxStream<'static, Result<ChatChunk, ProviderError>>, ProviderError> {
-        unimplemented!()
+        let resp = self.chat(_request).await?;
+        let chunk = ChatChunk {
+            id: resp.id.clone(),
+            delta: Delta {
+                role: Some("assistant".to_owned()),
+                content: resp.content.clone(),
+                tool_call_delta: None,
+            },
+            finish_reason: Some(resp.finish_reason.clone()),
+            usage: Some(resp.usage.clone()),
+        };
+        let stream = futures::stream::iter(vec![Ok(chunk)]);
+        Ok(Box::pin(stream))
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
@@ -484,8 +583,6 @@ impl Provider for MockProvider {
         Ok(())
     }
 }
-
-
 
 // ---------------------------------------------------------------------------
 // Testes do Harness
@@ -540,9 +637,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_agent_completes_without_tools() {
-        let provider = mock_provider_with_responses(vec![make_tool_response(
-            "Tarefa concluída.",
-        )]);
+        let provider = mock_provider_with_responses(vec![make_tool_response("Tarefa concluída.")]);
         let agent = setup_agent(provider.clone());
         let result = agent.run("teste simples").await.unwrap();
 
@@ -573,13 +668,12 @@ mod tests {
     #[tokio::test]
     async fn test_agent_respects_max_iterations() {
         // Sempre retorna tool_call → loop infinito simulado
-        let provider = mock_provider_with_responses(vec![make_tool_call_response(vec![
-            ToolCall {
+        let provider =
+            mock_provider_with_responses(vec![make_tool_call_response(vec![ToolCall {
                 id: "call_1".to_owned(),
                 name: "read_file".to_owned(),
                 arguments: r#"{"path":"foo"}"#.to_owned(),
-            },
-        ])]);
+            }])]);
         let agent = setup_agent(provider.clone());
         let result = agent.run("loop infinito").await.unwrap();
 
@@ -631,11 +725,15 @@ mod tests {
         }
 
         assert!(
-            events.iter().any(|e| matches!(e, AgentEvent::LoopStarted { .. })),
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::LoopStarted { .. })),
             "deve ter LoopStarted"
         );
         assert!(
-            events.iter().any(|e| matches!(e, AgentEvent::LoopFinished { .. })),
+            events
+                .iter()
+                .any(|e| matches!(e, AgentEvent::LoopFinished { .. })),
             "deve ter LoopFinished"
         );
     }

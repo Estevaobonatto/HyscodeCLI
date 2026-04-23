@@ -11,7 +11,11 @@ pub struct ReadFileTool;
 /// Compartilhado com write_file via inline copy — sem dep extra.
 fn resolve_safe_path(base: &Path, target: &str) -> Result<PathBuf, ToolError> {
     let raw = Path::new(target);
-    let joined = if raw.is_absolute() { raw.to_path_buf() } else { base.join(raw) };
+    let joined = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        base.join(raw)
+    };
     let normalized = normalize_path(&joined);
     let base_norm = normalize_path(base);
     if !normalized.starts_with(&base_norm) {
@@ -29,7 +33,9 @@ fn normalize_path(path: &Path) -> PathBuf {
     for comp in path.components() {
         use std::path::Component;
         match comp {
-            Component::ParentDir => { out.pop(); }
+            Component::ParentDir => {
+                out.pop();
+            }
             Component::CurDir => {}
             c => out.push(c),
         }
@@ -39,7 +45,9 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 #[async_trait]
 impl Tool for ReadFileTool {
-    fn name(&self) -> &str { "read_file" }
+    fn name(&self) -> &str {
+        "read_file"
+    }
 
     fn description(&self) -> &str {
         "Lê o conteúdo completo de um arquivo. Use caminhos relativos ao diretório de trabalho."
@@ -69,7 +77,9 @@ impl Tool for ReadFileTool {
         let cwd = std::env::current_dir().map_err(ToolError::Io)?;
         let safe_path = resolve_safe_path(&cwd, path_str)?;
 
-        let content = tokio::fs::read_to_string(&safe_path).await.map_err(ToolError::Io)?;
+        let content = tokio::fs::read_to_string(&safe_path)
+            .await
+            .map_err(ToolError::Io)?;
 
         Ok(ToolResult::success("", content))
     }

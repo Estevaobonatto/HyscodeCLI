@@ -11,7 +11,11 @@ pub struct WriteFileTool;
 fn resolve_safe_path(base: &Path, target: &str) -> Result<PathBuf, ToolError> {
     let raw = Path::new(target);
     // Se for absoluto, usar diretamente; se relativo, prefixar com base.
-    let joined = if raw.is_absolute() { raw.to_path_buf() } else { base.join(raw) };
+    let joined = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        base.join(raw)
+    };
 
     // Normalizar sem precisar que o arquivo exista (canonicalize exige existência).
     let normalized = normalize_path(&joined);
@@ -33,7 +37,9 @@ fn normalize_path(path: &Path) -> PathBuf {
     for comp in path.components() {
         use std::path::Component;
         match comp {
-            Component::ParentDir => { out.pop(); }
+            Component::ParentDir => {
+                out.pop();
+            }
             Component::CurDir => {}
             c => out.push(c),
         }
@@ -43,7 +49,9 @@ fn normalize_path(path: &Path) -> PathBuf {
 
 #[async_trait]
 impl Tool for WriteFileTool {
-    fn name(&self) -> &str { "write_file" }
+    fn name(&self) -> &str {
+        "write_file"
+    }
 
     fn description(&self) -> &str {
         "Escreve conteúdo em um arquivo dentro do diretório de trabalho. Cria o arquivo se não existir. Sobrescreve se existir."
@@ -66,25 +74,35 @@ impl Tool for WriteFileTool {
         })
     }
 
-    fn requires_confirmation(&self) -> bool { true }
-    fn is_destructive(&self) -> bool { true }
+    fn requires_confirmation(&self) -> bool {
+        true
+    }
+    fn is_destructive(&self) -> bool {
+        true
+    }
 
     async fn execute(&self, args: Value) -> Result<ToolResult, ToolError> {
-        let path_str = args["path"].as_str().ok_or_else(|| ToolError::InvalidArgs {
-            tool: self.name().to_owned(),
-            reason: "campo 'path' obrigatório".to_owned(),
-        })?;
-        let content = args["content"].as_str().ok_or_else(|| ToolError::InvalidArgs {
-            tool: self.name().to_owned(),
-            reason: "campo 'content' obrigatório".to_owned(),
-        })?;
+        let path_str = args["path"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs {
+                tool: self.name().to_owned(),
+                reason: "campo 'path' obrigatório".to_owned(),
+            })?;
+        let content = args["content"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs {
+                tool: self.name().to_owned(),
+                reason: "campo 'content' obrigatório".to_owned(),
+            })?;
 
         let cwd = std::env::current_dir().map_err(ToolError::Io)?;
         let safe_path = resolve_safe_path(&cwd, path_str)?;
 
         // Cria diretórios pai se necessário
         if let Some(parent) = safe_path.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(ToolError::Io)?;
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(ToolError::Io)?;
         }
 
         // Backup do arquivo existente para suporte a rollback
@@ -100,7 +118,9 @@ impl Tool for WriteFileTool {
             None
         };
 
-        tokio::fs::write(&safe_path, content).await.map_err(ToolError::Io)?;
+        tokio::fs::write(&safe_path, content)
+            .await
+            .map_err(ToolError::Io)?;
 
         // Registra no undo log
         if let Some(ref bp) = backup_path {
@@ -179,7 +199,6 @@ async fn append_undo_entry(original: &Path, backup: &Path) -> std::io::Result<()
     file.write_all(line.as_bytes()).await?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {

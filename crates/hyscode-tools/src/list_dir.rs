@@ -8,8 +8,12 @@ pub struct ListDirTool;
 
 #[async_trait]
 impl Tool for ListDirTool {
-    fn name(&self) -> &str { "list_dir" }
-    fn description(&self) -> &str { "Lista arquivos e subdiretórios de um diretório." }
+    fn name(&self) -> &str {
+        "list_dir"
+    }
+    fn description(&self) -> &str {
+        "Lista arquivos e subdiretórios de um diretório."
+    }
 
     fn schema(&self) -> Value {
         json!({
@@ -22,10 +26,12 @@ impl Tool for ListDirTool {
     }
 
     async fn execute(&self, args: Value) -> Result<ToolResult, ToolError> {
-        let path = args["path"].as_str().ok_or_else(|| ToolError::InvalidArgs {
-            tool: self.name().to_owned(),
-            reason: "campo 'path' obrigatório".to_owned(),
-        })?;
+        let path = args["path"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs {
+                tool: self.name().to_owned(),
+                reason: "campo 'path' obrigatório".to_owned(),
+            })?;
 
         let mut entries = tokio::fs::read_dir(path).await.map_err(ToolError::Io)?;
         let mut lines = Vec::new();

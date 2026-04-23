@@ -1,7 +1,57 @@
-use std::collections::VecDeque;
-
-use hyscode_core::models::message::Message;
 use hyscode_core::models::usage::TokenUsage;
+
+/// Tema da interface TUI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Theme {
+    #[default]
+    Dark,
+    Light,
+}
+
+impl std::str::FromStr for Theme {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "light" => Ok(Theme::Light),
+            _ => Ok(Theme::Dark),
+        }
+    }
+}
+
+impl Theme {
+    pub fn bg(&self) -> ratatui::style::Color {
+        match self {
+            Theme::Dark => ratatui::style::Color::Black,
+            Theme::Light => ratatui::style::Color::White,
+        }
+    }
+
+    pub fn fg(&self) -> ratatui::style::Color {
+        match self {
+            Theme::Dark => ratatui::style::Color::White,
+            Theme::Light => ratatui::style::Color::Black,
+        }
+    }
+
+    pub fn fg_secondary(&self) -> ratatui::style::Color {
+        match self {
+            Theme::Dark => ratatui::style::Color::Gray,
+            Theme::Light => ratatui::style::Color::DarkGray,
+        }
+    }
+
+    pub fn border(&self) -> ratatui::style::Color {
+        match self {
+            Theme::Dark => ratatui::style::Color::DarkGray,
+            Theme::Light => ratatui::style::Color::Gray,
+        }
+    }
+
+    pub fn highlight(&self) -> ratatui::style::Color {
+        ratatui::style::Color::Cyan
+    }
+}
 
 /// Estado da aplicação de chat TUI.
 pub struct ChatApp {
@@ -22,6 +72,10 @@ pub struct ChatApp {
     pub system_prompt: Option<String>,
     /// Uso de tokens da última resposta.
     pub token_usage: Option<TokenUsage>,
+    /// Tema atual da interface.
+    pub theme: Theme,
+    /// Perfil de agente atual.
+    pub current_agent: String,
 }
 
 #[derive(Debug, Clone)]
@@ -131,7 +185,7 @@ impl SlashCommand {
 }
 
 impl ChatApp {
-    pub fn new(provider: String, model: String) -> Self {
+    pub fn new(provider: String, model: String, theme: Theme) -> Self {
         let mut app = Self {
             messages: Vec::new(),
             input: String::new(),
@@ -148,14 +202,38 @@ impl ChatApp {
             pending_command: None,
             system_prompt: None,
             token_usage: None,
+            theme,
+            current_agent: "default".to_owned(),
         };
-        app.add_system_message("Bem-vindo ao Hyscode! Digite /help para ver os comandos disponíveis.");
+        app.add_system_message(
+            "Bem-vindo ao Hyscode! Digite /help para ver os comandos disponíveis.",
+        );
         app
     }
 
     /// Define o system prompt customizado para esta sessão.
     pub fn set_system_prompt(&mut self, prompt: String) {
         self.system_prompt = Some(prompt);
+    }
+
+    /// Altera o perfil de agente e atualiza o system prompt correspondente.
+    pub fn set_agent(&mut self, agent: &str) {
+        self.current_agent = agent.to_owned();
+        let prompt = match agent {
+            "code-review" => {
+                "Você é um revisor de código especialista. Analise o código focado em: segurança, performance, legibilidade, manutenibilidade e aderência às melhores práticas do ecossistema. Seja direto e actionável."
+            }
+            "architecture" => {
+                "Você é um arquiteto de software sênior. Ajude a projetar sistemas escaláveis, definir boundaries de serviços, escolher tecnologias e criar diagrams de arquitetura conceituais quando útil."
+            }
+            "debug" => {
+                "Você é um especialista em debugging. Analise logs, stack traces e comportamentos anômalos. Sugira hipóteses de causa raiz e passos concretos para validar cada uma."
+            }
+            _ => {
+                "Você é um agente de codificação especializado em Rust. Ajude com tarefas de desenvolvimento, refatoração, testes e documentação de código."
+            }
+        };
+        self.system_prompt = Some(prompt.to_owned());
     }
 
     /// Atualiza o uso de tokens com dados do último chunk.
@@ -304,10 +382,7 @@ impl ChatApp {
                 "claude-3-5-haiku-20241022",
                 "claude-3-opus-20240229",
             ],
-            "copilot" => &[
-                "gpt-4o-copilot",
-                "claude-3.5-sonnet-copilot",
-            ],
+            "copilot" => &["gpt-4o-copilot", "claude-3.5-sonnet-copilot"],
             "openrouter" => &[
                 "openai/gpt-4o",
                 "anthropic/claude-3.5-sonnet",

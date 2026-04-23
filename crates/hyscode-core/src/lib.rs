@@ -11,11 +11,11 @@ pub mod traits;
 // Re-exports principais
 pub use error::ProviderError;
 pub use models::{
-    message::{Message, MessageContent, ContentPart},
+    message::{ContentPart, Message, MessageContent},
+    provider::{ModelInfo, ProviderCapabilities},
     request::ChatRequest,
-    response::{ChatResponse, ChatChunk, Delta, FinishReason},
+    response::{ChatChunk, ChatResponse, Delta, FinishReason},
     tool::{ToolCall, ToolDefinition, ToolResult},
     usage::TokenUsage,
-    provider::{ModelInfo, ProviderCapabilities},
 };
 pub use traits::provider::Provider;

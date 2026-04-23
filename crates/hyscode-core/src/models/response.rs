@@ -1,7 +1,7 @@
 //! Tipos de resposta do provedor.
 
-use serde::{Deserialize, Serialize};
 use crate::models::{tool::ToolCall, usage::TokenUsage};
+use serde::{Deserialize, Serialize};
 
 /// Resposta completa (não-streaming).
 #[derive(Debug, Clone)]

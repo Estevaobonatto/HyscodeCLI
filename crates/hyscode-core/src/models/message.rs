@@ -1,7 +1,7 @@
 //! Tipos de mensagem de conversa.
 
-use serde::{Deserialize, Serialize};
 use crate::models::tool::ToolCall;
+use serde::{Deserialize, Serialize};
 
 /// Mensagem de conversa no formato canônico interno.
 #[derive(Debug, Clone, Serialize, Deserialize)]

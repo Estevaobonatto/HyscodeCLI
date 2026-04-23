@@ -78,6 +78,7 @@ which          = "6"
 
 # Config e secrets
 keyring        = "3"
+aes-gcm-siv    = "0.11"
 
 # Git
 git2           = { version = "0.19" }

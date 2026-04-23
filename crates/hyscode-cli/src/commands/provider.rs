@@ -1,4 +1,7 @@
-use hyscode_config::{load_config, save_config, keyring::{store_api_key, delete_api_key}};
+use hyscode_config::{
+    load_config, save_config,
+    vault::{delete_api_key, store_api_key},
+};
 
 pub async fn run(action: crate::ProviderAction) -> anyhow::Result<()> {
     match action {
@@ -13,7 +16,9 @@ pub async fn run(action: crate::ProviderAction) -> anyhow::Result<()> {
                 input.trim().to_owned()
             };
 
-            store_api_key(&name, &key)?;
+            if !key.is_empty() {
+                store_api_key(&name, &key)?;
+            }
             config.providers.insert(
                 name.clone(),
                 hyscode_config::file::ProviderConfig {
@@ -52,12 +57,13 @@ pub async fn run(action: crate::ProviderAction) -> anyhow::Result<()> {
             println!("🧪 Testando conectividade com '{}'...", name);
             let config = load_config().unwrap_or_default();
             let registry = crate::commands::providers::build_registry(&config).await?;
-            let provider = registry
-                .get(&name)
-                .ok_or_else(|| anyhow::anyhow!(
+            let provider = registry.get(&name).ok_or_else(|| {
+                anyhow::anyhow!(
                     "Provedor '{}' não configurado. Use `hyscode provider add {}`.",
-                    name, name
-                ))?;
+                    name,
+                    name
+                )
+            })?;
             match provider.validate().await {
                 Ok(()) => println!("✅ Conexão com '{}' bem-sucedida!", name),
                 Err(e) => println!("❌ Falha ao conectar com '{}': {}", name, e),
@@ -71,11 +77,10 @@ pub async fn run(action: crate::ProviderAction) -> anyhow::Result<()> {
             let registry = crate::commands::providers::build_registry(&config).await?;
             let provider = registry
                 .get(&name)
-                .ok_or_else(|| anyhow::anyhow!(
-                    "Provedor '{}' não configurado.",
-                    name
-                ))?;
-            let models = provider.list_models().await
+                .ok_or_else(|| anyhow::anyhow!("Provedor '{}' não configurado.", name))?;
+            let models = provider
+                .list_models()
+                .await
                 .map_err(|e| anyhow::anyhow!("Erro ao listar modelos: {}", e))?;
             if models.is_empty() {
                 println!("Nenhum modelo encontrado para '{}'.", name);

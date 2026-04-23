@@ -66,10 +66,17 @@ pub async fn run(all: bool) -> anyhow::Result<()> {
         diff
     );
 
-    let request = ChatRequest::new(model, vec![
-        Message::System { content: "Você gera mensagens de commit no padrão Conventional Commits.".to_owned() },
-        Message::User { content: prompt.into() },
-    ]);
+    let request = ChatRequest::new(
+        model,
+        vec![
+            Message::System {
+                content: "Você gera mensagens de commit no padrão Conventional Commits.".to_owned(),
+            },
+            Message::User {
+                content: prompt.into(),
+            },
+        ],
+    );
 
     match provider.chat(request).await {
         Ok(response) => {
@@ -96,7 +103,10 @@ pub async fn run(all: bool) -> anyhow::Result<()> {
                 if output.status.success() {
                     println!("✅ Commit realizado com sucesso!");
                 } else {
-                    eprintln!("❌ Falha no git commit: {}", String::from_utf8_lossy(&output.stderr));
+                    eprintln!(
+                        "❌ Falha no git commit: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                 }
             } else {
                 println!("Commit cancelado. Use `git commit -m \"sua mensagem\"` manualmente.");

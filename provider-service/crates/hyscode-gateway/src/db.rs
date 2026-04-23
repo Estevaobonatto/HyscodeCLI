@@ -19,8 +19,7 @@ pub async fn connect(database_url: &str) -> Result<PgPool> {
 }
 
 pub async fn connect_redis(redis_url: &str) -> Result<redis::aio::ConnectionManager> {
-    let client = redis::Client::open(redis_url)
-        .context("URL do Redis inválida")?;
+    let client = redis::Client::open(redis_url).context("URL do Redis inválida")?;
 
     let manager = redis::aio::ConnectionManager::new(client)
         .await

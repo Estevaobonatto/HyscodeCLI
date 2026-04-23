@@ -1,7 +1,7 @@
 //! Registro de ferramentas disponíveis ao agente.
 
-use std::{collections::HashMap, sync::Arc};
 use hyscode_core::traits::tool::Tool;
+use std::{collections::HashMap, sync::Arc};
 
 /// Registro central de ferramentas.
 pub struct ToolRegistry {

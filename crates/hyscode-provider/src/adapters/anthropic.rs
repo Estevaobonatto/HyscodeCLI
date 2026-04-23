@@ -13,7 +13,7 @@ use hyscode_core::{
         message::{Message, MessageContent},
         provider::{ModelInfo, ProviderCapabilities},
         request::ChatRequest,
-        response::{ChatChunk, ChatResponse, Delta, FinishReason, ToolCallDelta},
+        response::{ChatChunk, ChatResponse, Delta, FinishReason},
         usage::TokenUsage,
     },
     traits::provider::Provider,
@@ -61,18 +61,9 @@ impl AnthropicAdapter {
 
     fn auth_headers(&self) -> anyhow::Result<reqwest::header::HeaderMap> {
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            "x-api-key",
-            self.config.api_key.parse()?,
-        );
-        headers.insert(
-            "anthropic-version",
-            ANTHROPIC_VERSION.parse()?,
-        );
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            "application/json".parse()?,
-        );
+        headers.insert("x-api-key", self.config.api_key.parse()?);
+        headers.insert("anthropic-version", ANTHROPIC_VERSION.parse()?);
+        headers.insert(reqwest::header::CONTENT_TYPE, "application/json".parse()?);
         Ok(headers)
     }
 }
@@ -122,12 +113,11 @@ impl Provider for AnthropicAdapter {
             });
         }
 
-        let anthropic_resp: AnthropicMessageResponse = response.json().await.map_err(|e| {
-            ProviderError::Http {
+        let anthropic_resp: AnthropicMessageResponse =
+            response.json().await.map_err(|e| ProviderError::Http {
                 status: 0,
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         Ok(anthropic_resp.into_chat_response())
     }
@@ -263,9 +253,7 @@ fn build_anthropic_request(req: ChatRequest) -> AnthropicMessagesRequest {
                     MessageContent::Parts(parts) => parts
                         .into_iter()
                         .filter_map(|p| match p {
-                            hyscode_core::models::message::ContentPart::Text { text } => {
-                                Some(text)
-                            }
+                            hyscode_core::models::message::ContentPart::Text { text } => Some(text),
                             _ => None,
                         })
                         .collect::<Vec<_>>()
@@ -502,6 +490,7 @@ struct AnthropicMessageResponse {
     id: String,
     #[serde(rename = "type")]
     _type: String,
+    #[allow(dead_code)]
     role: String,
     content: Vec<AnthropicContentBlock>,
     model: String,
@@ -537,13 +526,16 @@ impl AnthropicMessageResponse {
             .collect::<Vec<_>>()
             .join("");
 
-        let finish_reason = self.stop_reason.map(|r| match r.as_str() {
-            "end_turn" => FinishReason::Stop,
-            "max_tokens" => FinishReason::Length,
-            "tool_use" => FinishReason::ToolCalls,
-            "content_filter" => FinishReason::ContentFilter,
-            _ => FinishReason::Error,
-        }).unwrap_or(FinishReason::Stop);
+        let finish_reason = self
+            .stop_reason
+            .map(|r| match r.as_str() {
+                "end_turn" => FinishReason::Stop,
+                "max_tokens" => FinishReason::Length,
+                "tool_use" => FinishReason::ToolCalls,
+                "content_filter" => FinishReason::ContentFilter,
+                _ => FinishReason::Error,
+            })
+            .unwrap_or(FinishReason::Stop);
 
         ChatResponse {
             id: self.id,
@@ -573,6 +565,7 @@ struct AnthropicMessageStartInner {
 
 #[derive(Debug, Deserialize)]
 struct AnthropicContentBlockDelta {
+    #[allow(dead_code)]
     index: usize,
     delta: AnthropicDeltaInner,
 }
@@ -580,8 +573,13 @@ struct AnthropicContentBlockDelta {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AnthropicDeltaInner {
-    TextDelta { text: String },
-    InputJsonDelta { partial_json: String },
+    TextDelta {
+        text: String,
+    },
+    #[allow(dead_code)]
+    InputJsonDelta {
+        partial_json: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -594,6 +592,7 @@ struct AnthropicMessageDelta {
 #[derive(Debug, Deserialize, Default)]
 struct AnthropicStopDelta {
     stop_reason: Option<String>,
+    #[allow(dead_code)]
     stop_sequence: Option<String>,
 }
 
@@ -619,7 +618,10 @@ mod tests {
             ],
         );
         let anthropic_req = build_anthropic_request(req);
-        assert_eq!(anthropic_req.system, Some("Você é um assistente.".to_owned()));
+        assert_eq!(
+            anthropic_req.system,
+            Some("Você é um assistente.".to_owned())
+        );
         assert_eq!(anthropic_req.messages.len(), 1);
         assert_eq!(anthropic_req.messages[0].role, "user");
         assert_eq!(anthropic_req.messages[0].content, "Olá");

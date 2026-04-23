@@ -1,11 +1,11 @@
-pub mod chat;
 pub mod agent;
-pub mod provider;
-pub mod config;
-pub mod init;
+pub mod chat;
 pub mod commit;
 pub mod completions;
-pub mod providers;
+pub mod config;
 pub mod history;
-pub mod undo;
+pub mod init;
+pub mod provider;
+pub mod providers;
 pub mod review;
+pub mod undo;

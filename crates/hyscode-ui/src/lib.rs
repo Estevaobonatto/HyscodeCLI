@@ -1,7 +1,7 @@
 //! hyscode-ui — Interface do terminal
 
-pub mod stream;
 pub mod markdown;
+pub mod stream;
 pub mod tui;
 
 pub use stream::StreamRenderer;

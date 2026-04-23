@@ -27,8 +27,8 @@ pub async fn run(limit: usize) -> anyhow::Result<()> {
     }
 
     println!(
-        "{:<26}  {:<12}  {:<20}  {:>5}  {}",
-        "ID", "Provedor", "Modelo", "Msgs", "Criado em"
+        "{:<26}  {:<12}  {:<20}  {:>5}  Criado em",
+        "ID", "Provedor", "Modelo", "Msgs"
     );
     println!("{}", "─".repeat(85));
 

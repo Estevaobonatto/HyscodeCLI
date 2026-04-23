@@ -64,10 +64,7 @@ impl OpenAIAdapter {
             reqwest::header::AUTHORIZATION,
             format!("Bearer {}", self.config.api_key).parse()?,
         );
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            "application/json".parse()?,
-        );
+        headers.insert(reqwest::header::CONTENT_TYPE, "application/json".parse()?);
         Ok(headers)
     }
 }
@@ -117,10 +114,11 @@ impl Provider for OpenAIAdapter {
             });
         }
 
-        let openai_resp: OpenAIChatResponse = response.json().await.map_err(|e| ProviderError::Http {
-            status: 0,
-            message: e.to_string(),
-        })?;
+        let openai_resp: OpenAIChatResponse =
+            response.json().await.map_err(|e| ProviderError::Http {
+                status: 0,
+                message: e.to_string(),
+            })?;
 
         Ok(openai_resp.into_chat_response())
     }
@@ -196,10 +194,11 @@ impl Provider for OpenAIAdapter {
             });
         }
 
-        let models_resp: OpenAIModelsResponse = response.json().await.map_err(|e| ProviderError::Http {
-            status: 0,
-            message: e.to_string(),
-        })?;
+        let models_resp: OpenAIModelsResponse =
+            response.json().await.map_err(|e| ProviderError::Http {
+                status: 0,
+                message: e.to_string(),
+            })?;
 
         Ok(models_resp
             .data
@@ -326,7 +325,9 @@ impl OpenAIChatRequest {
                         MessageContent::Parts(parts) => parts
                             .into_iter()
                             .filter_map(|p| match p {
-                                hyscode_core::models::message::ContentPart::Text { text } => Some(text),
+                                hyscode_core::models::message::ContentPart::Text { text } => {
+                                    Some(text)
+                                }
                                 _ => None,
                             })
                             .collect::<Vec<_>>()
@@ -339,7 +340,11 @@ impl OpenAIChatRequest {
                         tool_call_id: None,
                     }
                 }
-                Message::Assistant { content, tool_calls, .. } => {
+                Message::Assistant {
+                    content,
+                    tool_calls,
+                    ..
+                } => {
                     let tcs = tool_calls.map(|tcs| {
                         tcs.into_iter()
                             .map(|tc| OpenAIToolCall {
@@ -359,7 +364,11 @@ impl OpenAIChatRequest {
                         tool_call_id: None,
                     }
                 }
-                Message::Tool { tool_call_id, content, .. } => OpenAIMessage {
+                Message::Tool {
+                    tool_call_id,
+                    content,
+                    ..
+                } => OpenAIMessage {
                     role: "tool".to_owned(),
                     content: Some(content),
                     tool_calls: None,
@@ -470,11 +479,14 @@ impl OpenAIChatResponse {
             })
             .unwrap_or(FinishReason::Stop);
 
-        let usage = self.usage.map(|u| TokenUsage {
-            prompt_tokens: u.prompt_tokens,
-            completion_tokens: u.completion_tokens,
-            total_tokens: u.total_tokens,
-        }).unwrap_or_default();
+        let usage = self
+            .usage
+            .map(|u| TokenUsage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+            })
+            .unwrap_or_default();
 
         ChatResponse {
             id: self.id,
@@ -499,15 +511,15 @@ impl OpenAIStreamEvent {
             })
             .unwrap_or_default();
 
-        let finish_reason = choice.and_then(|c| c.finish_reason).and_then(|r| {
-            match r.as_str() {
-                "stop" => Some(FinishReason::Stop),
-                "length" => Some(FinishReason::Length),
-                "tool_calls" => Some(FinishReason::ToolCalls),
-                "content_filter" => Some(FinishReason::ContentFilter),
-                _ => Some(FinishReason::Error),
-            }
-        });
+        let finish_reason = choice
+            .and_then(|c| c.finish_reason)
+            .map(|r| match r.as_str() {
+                "stop" => FinishReason::Stop,
+                "length" => FinishReason::Length,
+                "tool_calls" => FinishReason::ToolCalls,
+                "content_filter" => FinishReason::ContentFilter,
+                _ => FinishReason::Error,
+            });
 
         ChatChunk {
             id: self.id,

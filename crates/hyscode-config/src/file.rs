@@ -1,8 +1,8 @@
 //! Leitura e escrita do arquivo de configuração TOML.
 
-use std::{collections::HashMap, path::PathBuf};
-use serde::{Deserialize, Serialize};
 use dirs::config_dir;
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, path::PathBuf};
 
 /// Configuração raiz da aplicação.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -96,7 +96,11 @@ impl Default for ContextConfig {
             include_git_diff: false,
             max_file_size_kb: 512,
             respect_gitignore: true,
-            custom_ignore: vec![".hyscode/".to_owned(), "*.lock".to_owned(), "target/".to_owned()],
+            custom_ignore: vec![
+                ".hyscode/".to_owned(),
+                "*.lock".to_owned(),
+                "target/".to_owned(),
+            ],
         }
     }
 }
@@ -111,15 +115,12 @@ pub struct ProviderConfig {
     pub max_retries: u32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ApiKeySource {
+    #[default]
     Keyring,
     Env,
-}
-
-impl Default for ApiKeySource {
-    fn default() -> Self { Self::Keyring }
 }
 
 /// Retorna o caminho padrão do arquivo de configuração.

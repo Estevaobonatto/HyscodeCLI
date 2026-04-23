@@ -164,10 +164,10 @@ cargo run -p hyscode-cli -- chat "Olá"
 | Fase | Status | Descrição |
 |------|--------|-----------|
 | 1 | Concluída | Planejamento e arquitetura |
-| 2 | Próxima | Core da CLI: config, providers básicos, chat |
-| 3 | Futura | Engine completo: agent loop, tools, streaming |
-| 4 | Futura | Provider Service SaaS |
-| 5 | Futura | Billing, dashboard, admin |
+| 2 | Concluída | Core da CLI: config, providers básicos, chat |
+| 3 | Próxima | Engine completo: agent loop, tools, streaming |
+| 4 | Concluída | Provider Service SaaS |
+| 5 | Concluída | Billing, dashboard, admin |
 | 6 | Futura | RAG local, TUI avançada, plugins |
 
 ## Provider Service (Fase 4+)

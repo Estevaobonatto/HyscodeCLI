@@ -2,13 +2,19 @@
 //!
 //! Proxy autenticado para requisições LLM com controle de quota, billing e logging.
 
+mod admin;
+mod anthropic;
+mod apikeys;
 mod auth;
+mod billing;
 mod config;
+mod dashboard;
 mod db;
 mod error;
 mod models;
 mod router;
 mod upstream;
+mod users;
 
 use anyhow::Context;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -32,7 +38,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::connect(&cfg.database_url).await?;
     let redis = db::connect_redis(&cfg.redis_url).await?;
 
-    let app = router::build_router(pool, redis, cfg);
+    let app = router::build_router(pool, redis, cfg.clone());
 
     let listener = tokio::net::TcpListener::bind(&cfg.listen_addr).await?;
     tracing::info!(addr = %cfg.listen_addr, "Servidor escutando");

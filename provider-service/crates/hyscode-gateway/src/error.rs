@@ -28,6 +28,12 @@ pub enum GatewayError {
     #[error("Requisição inválida: {0}")]
     BadRequest(String),
 
+    #[error("Conflito: {0}")]
+    Conflict(String),
+
+    #[error("Não encontrado: {0}")]
+    NotFound(String),
+
     #[error("Erro interno: {0}")]
     Internal(#[from] anyhow::Error),
 }
@@ -35,15 +41,33 @@ pub enum GatewayError {
 impl IntoResponse for GatewayError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
-            GatewayError::Unauthorized    => (StatusCode::UNAUTHORIZED,    "unauthorized",      self.to_string()),
-            GatewayError::Forbidden       => (StatusCode::FORBIDDEN,       "forbidden",         self.to_string()),
-            GatewayError::QuotaExceeded   => (StatusCode::TOO_MANY_REQUESTS, "quota_exceeded",  self.to_string()),
-            GatewayError::ModelNotFound(_) => (StatusCode::NOT_FOUND,      "model_not_found",   self.to_string()),
-            GatewayError::UpstreamError(_) => (StatusCode::BAD_GATEWAY,    "upstream_error",    self.to_string()),
-            GatewayError::BadRequest(_)   => (StatusCode::BAD_REQUEST,     "bad_request",       self.to_string()),
-            GatewayError::Internal(e)     => {
+            GatewayError::Unauthorized => {
+                (StatusCode::UNAUTHORIZED, "unauthorized", self.to_string())
+            }
+            GatewayError::Forbidden => (StatusCode::FORBIDDEN, "forbidden", self.to_string()),
+            GatewayError::QuotaExceeded => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "quota_exceeded",
+                self.to_string(),
+            ),
+            GatewayError::ModelNotFound(_) => {
+                (StatusCode::NOT_FOUND, "model_not_found", self.to_string())
+            }
+            GatewayError::UpstreamError(_) => {
+                (StatusCode::BAD_GATEWAY, "upstream_error", self.to_string())
+            }
+            GatewayError::BadRequest(_) => {
+                (StatusCode::BAD_REQUEST, "bad_request", self.to_string())
+            }
+            GatewayError::Conflict(_) => (StatusCode::CONFLICT, "conflict", self.to_string()),
+            GatewayError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found", self.to_string()),
+            GatewayError::Internal(e) => {
                 tracing::error!("Erro interno: {:?}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Erro interno do servidor".to_owned())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "Erro interno do servidor".to_owned(),
+                )
             }
         };
 

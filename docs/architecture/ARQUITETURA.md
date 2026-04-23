@@ -55,9 +55,13 @@ O HyscodeCLI é composto por duas macro-partes:
   - `hyscode chat [mensagem]` — Modo conversação com TUI e streaming
   - `hyscode agent --task <descricao>` — Modo agente autônomo com ferramentas
   - `hyscode commit [--all]` — Gera mensagem de commit com LLM
-  - `hyscode provider <add|list|remove|default|test>` — Gestão de provedores
+  - `hyscode review [--staged]` — Revisa diff atual com o LLM
+  - `hyscode provider <add|list|remove|default|test|login|models>` — Gestão de provedores
   - `hyscode config <get|set|show|edit>` — Configurações
   - `hyscode init` — Inicialização do projeto
+  - `hyscode history [-n <limite>]` — Lista histórico de conversas
+  - `hyscode undo [passos]` — Desfaz escritas de arquivo pelo agente
+  - `hyscode completions <shell>` — Gera script de autocompleção (bash, zsh, fish, powershell, elvish)
 
 ### 2.2. Engine (`hyscode-engine`)
 
@@ -68,6 +72,8 @@ O HyscodeCLI é composto por duas macro-partes:
   - **ContextBuilder:** Monta o contexto a partir de arquivos, git, histórico
   - **PermissionManager:** Policy engine para controle de acesso às ferramentas (audit-only, auto-approve, callbacks)
   - **TokenEstimator:** Calcula e limita tokens de acordo com o modelo
+  - **Summarizer:** Sumariza mensagens antigas quando contexto ultrapassa 85% do limite
+  - **AuditLog:** Persiste cada execução de ferramenta em JSONL para rastreabilidade
   - **TaskSystem:** Orquestração de múltiplas tarefas com fila prioritária, retries e eventos
 
 ### 2.3. Provider Adapter (`hyscode-provider`)
@@ -78,9 +84,9 @@ O HyscodeCLI é composto por duas macro-partes:
   - `OpenAIAdapter` — ✅ Completo (chat, streaming, list_models, validate)
   - `AnthropicAdapter` — ✅ Completo (Messages API + SSE)
   - `HyscodeProviderAdapter` — ✅ Completo (OpenAI-compatible, base_url custom)
-  - `GitHubCopilotAdapter` — 🔄 Via OpenAI-compatible (placeholder)
-  - `OpenRouterAdapter` — 🔄 Via OpenAI-compatible (placeholder)
-  - `ZAiAdapter` — 🔄 Via OpenAI-compatible (placeholder)
+  - `GitHubCopilotAdapter` — ✅ Completo (delega ao OpenAI adapter; requer token OAuth)
+  - `OpenRouterAdapter` — ✅ Completo (delega ao OpenAI adapter; default model `openai/gpt-4o`)
+  - `ZAiAdapter` — ✅ Completo (delega ao OpenAI adapter; base_url `https://api.z.ai/v1`; default model `z-pro`)
 
 ### 2.4. Tool Runner (`hyscode-tools`)
 
@@ -90,6 +96,7 @@ O HyscodeCLI é composto por duas macro-partes:
   - `write_file` — Escrita de arquivo (destrutiva, requer confirmação)
   - `list_dir` — Listagem de diretório (não-destrutiva)
   - `search_code` — Busca recursiva em código com filtro de glob e limite de resultados
+  - `glob_search` — Busca de arquivos por padrão glob
   - `execute_command` — Execução de comando shell com timeout (destrutiva)
   - `git_diff` — Obtém diff do repositório
 

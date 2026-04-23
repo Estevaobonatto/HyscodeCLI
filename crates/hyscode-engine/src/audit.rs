@@ -94,7 +94,9 @@ impl AuditLog {
             timestamp: Utc::now().to_rfc3339(),
             action: action.to_owned(),
             args,
-            result: AuditResult::Failure { reason: reason.into() },
+            result: AuditResult::Failure {
+                reason: reason.into(),
+            },
             session_id,
         })
         .await;
@@ -112,7 +114,9 @@ impl AuditLog {
             timestamp: Utc::now().to_rfc3339(),
             action: action.to_owned(),
             args,
-            result: AuditResult::Denied { reason: reason.into() },
+            result: AuditResult::Denied {
+                reason: reason.into(),
+            },
             session_id,
         })
         .await;
@@ -147,8 +151,7 @@ impl Default for AuditLog {
 /// Retorna o caminho padrão do arquivo de auditoria para a plataforma atual.
 pub fn audit_log_path() -> PathBuf {
     #[cfg(target_os = "windows")]
-    let base = dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."));
+    let base = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
 
     #[cfg(not(target_os = "windows"))]
     let base = dirs::data_local_dir()
@@ -185,7 +188,8 @@ mod tests {
         let log = AuditLog::with_path(path.clone());
 
         log.log_success("tool_a", serde_json::json!({}), None).await;
-        log.log_failure("tool_b", serde_json::json!({}), "timeout", None).await;
+        log.log_failure("tool_b", serde_json::json!({}), "timeout", None)
+            .await;
 
         let content = tokio::fs::read_to_string(&path).await.unwrap();
         let lines: Vec<&str> = content.lines().collect();

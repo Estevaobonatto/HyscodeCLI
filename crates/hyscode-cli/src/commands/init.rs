@@ -2,8 +2,8 @@ use std::fs;
 
 use hyscode_config::{
     file::{ApiKeySource, ProviderConfig},
-    keyring::store_api_key,
     load_config, save_config,
+    vault::store_api_key,
 };
 
 pub async fn run() -> anyhow::Result<()> {
@@ -27,7 +27,14 @@ pub async fn run() -> anyhow::Result<()> {
     }
 
     // Selecionar provedor padrão
-    let providers = ["openai", "anthropic", "openrouter", "copilot", "zai", "hyscode"];
+    let providers = [
+        "openai",
+        "anthropic",
+        "openrouter",
+        "copilot",
+        "zai",
+        "hyscode",
+    ];
     let provider_idx = dialoguer::Select::new()
         .with_prompt("Escolha o provedor de LLM padrão")
         .items(&providers)
@@ -48,16 +55,19 @@ pub async fn run() -> anyhow::Result<()> {
             String::new() // Já salvo pelo run_login
         } else {
             dialoguer::Password::new()
-                .with_prompt(format!("Cole o token do GitHub Copilot"))
+                .with_prompt("Cole o token do GitHub Copilot".to_string())
                 .interact()?
         }
     } else {
         dialoguer::Password::new()
-            .with_prompt(format!("API key para {} (fica armazenada no keyring do SO)", provider))
+            .with_prompt(format!(
+                "API key para {} (armazenada criptografada localmente)",
+                provider
+            ))
             .interact()?
     };
 
-    // Salvar API key no keyring se informada
+    // Salvar API key no vault criptografado
     if !api_key.is_empty() {
         store_api_key(provider, &api_key)?;
     }
@@ -69,10 +79,20 @@ pub async fn run() -> anyhow::Result<()> {
         .default(default_model.to_owned())
         .interact_text()?;
 
+    // Selecionar tema
+    let themes = ["dark", "light"];
+    let theme_idx = dialoguer::Select::new()
+        .with_prompt("Escolha o tema da interface")
+        .items(&themes)
+        .default(0)
+        .interact()?;
+    let theme = themes[theme_idx];
+
     // Atualizar configuração
     let mut config = load_config().unwrap_or_default();
     config.profile.default_provider = provider.to_owned();
     config.profile.default_model = model.clone();
+    config.ui.theme = theme.to_owned();
     config.providers.insert(
         provider.to_owned(),
         ProviderConfig {
@@ -99,9 +119,10 @@ pub async fn run() -> anyhow::Result<()> {
     println!("✅ HyscodeCLI inicializado com sucesso!");
     println!("   Provedor: {}", provider);
     println!("   Modelo:   {}", config.profile.default_model);
+    println!("   Tema:     {}", theme);
     println!();
     println!("Próximos passos:");
-    println!("  hyscode chat          # Inicia o chat interativo");
+    println!("  hyscode               # Inicia o chat interativo");
     println!("  hyscode agent <task>  # Executa uma tarefa autônoma");
     println!("  hyscode config show   # Exibe configuração atual");
 

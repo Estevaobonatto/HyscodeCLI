@@ -79,6 +79,7 @@ struct DeviceCodeResponse {
     device_code: String,
     user_code: String,
     verification_uri: String,
+    #[allow(dead_code)]
     expires_in: u64,
     interval: Option<u64>,
 }
@@ -86,8 +87,11 @@ struct DeviceCodeResponse {
 #[derive(Debug, Deserialize)]
 struct AccessTokenResponse {
     access_token: Option<String>,
+    #[allow(dead_code)]
     token_type: Option<String>,
+    #[allow(dead_code)]
     scope: Option<String>,
     error: Option<String>,
+    #[allow(dead_code)]
     error_description: Option<String>,
 }

@@ -198,6 +198,103 @@ pub enum ProviderError {
 
     #[error("provedor indisponível temporariamente")]
     Unavailable,
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+/// Erros de ferramenta do agente.
+#[derive(thiserror::Error, Debug)]
+pub enum ToolError {
+    #[error("ferramenta '{0}' não encontrada")]
+    NotFound(String),
+
+    #[error("argumentos inválidos para '{tool}': {reason}")]
+    InvalidArgs { tool: String, reason: String },
+
+    #[error("permissão negada para operação: {0}")]
+    PermissionDenied(String),
+
+    #[error("operação cancelada pelo usuário")]
+    Cancelled,
+
+    #[error("timeout na execução da ferramenta '{0}'")]
+    Timeout(String),
+
+    #[error("erro de I/O: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+/// Erros de configuração.
+#[derive(thiserror::Error, Debug)]
+pub enum ConfigError {
+    #[error("arquivo de configuração não encontrado em {0}")]
+    NotFound(String),
+
+    #[error("erro de parse na configuração: {0}")]
+    ParseError(String),
+
+    #[error("chave de API não configurada para o provedor '{0}'")]
+    ApiKeyMissing(String),
+
+    #[error("erro de acesso ao keyring: {0}")]
+    KeyringError(String),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+```
+
+### 1.5. AuditLog — Registro de Auditoria (`hyscode-engine`)
+
+```rust
+/// Uma entrada no log de auditoria (formato JSONL).
+/// Arquivo: `~/.local/share/hyscode/audit.jsonl`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEntry {
+    pub timestamp: String,           // ISO 8601
+    pub action: String,              // ex: "write_file", "execute_command"
+    pub args: serde_json::Value,
+    pub result: AuditResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum AuditResult {
+    Success,
+    Failure { reason: String },
+    Denied  { reason: String },
+}
+```
+
+### 1.6. TokenEstimator (`hyscode-engine`)
+
+```rust
+/// Estima e controla o uso de tokens nas requisições.
+pub struct TokenEstimator {
+    pub model_context_limit: u32,
+    /// Reserva 20% do contexto para a resposta.
+    pub reserved_for_completion: u32,
+}
+
+impl TokenEstimator {
+    /// Heurística: ~4 chars por token.
+    pub fn estimate(&self, text: &str) -> u32 { ... }
+
+    /// Tokens disponíveis para o prompt (limite − reserva).
+    pub fn available_for_prompt(&self) -> u32 { ... }
+
+    /// Se true, o prompt cabe dentro do limite.
+    pub fn fits(&self, prompt_tokens: u32) -> bool { ... }
+
+    /// Trunca mensagens para caber no limite,
+    /// sempre preservando a primeira (system) e as mais recentes.
+    pub fn truncate_messages<T: Clone>(...) -> Vec<T> { ... }
 }
 ```
 
@@ -354,113 +451,69 @@ pub enum ApiKeySource {
 
 ## 3. Modelos do Banco de Dados (Provider Service)
 
-### 3.1. Schema PostgreSQL
+> **Nota:** O schema abaixo reflete a migration `001_initial.sql` (implementação atual, Fase 4).
+> Fases futuras (billing, planos, admin) adicionarão tabelas conforme necessário.
+
+### 3.1. Schema PostgreSQL (migration 001)
 
 ```sql
 -- Usuários
 CREATE TABLE users (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email       TEXT UNIQUE NOT NULL,
-    name        TEXT,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at  TIMESTAMPTZ -- soft delete para LGPD
-);
-
--- Planos
-CREATE TABLE plans (
-    id                  TEXT PRIMARY KEY, -- 'free', 'pro', 'team', 'enterprise'
-    name                TEXT NOT NULL,
-    price_usd_monthly   NUMERIC(10,2),
-    requests_per_minute INT,
-    requests_per_day    INT,
-    tokens_per_month    BIGINT, -- NULL = ilimitado
-    features            JSONB NOT NULL DEFAULT '{}'
-);
-
--- Assinaturas
-CREATE TABLE subscriptions (
-    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id               UUID NOT NULL REFERENCES users(id),
-    plan_id               TEXT NOT NULL REFERENCES plans(id),
-    status                TEXT NOT NULL, -- 'active', 'canceled', 'past_due', 'trialing'
-    current_period_start  TIMESTAMPTZ NOT NULL,
-    current_period_end    TIMESTAMPTZ NOT NULL,
-    stripe_subscription_id TEXT,
-    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    email         TEXT        NOT NULL UNIQUE,
+    password_hash TEXT        NOT NULL,
+    display_name  TEXT,
+    tier          TEXT        NOT NULL DEFAULT 'free',   -- free | pro | enterprise
+    is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- API Keys
 CREATE TABLE api_keys (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      UUID NOT NULL REFERENCES users(id),
-    name         TEXT NOT NULL,
-    key_hash     TEXT NOT NULL UNIQUE,  -- bcrypt hash da chave
-    key_prefix   TEXT NOT NULL,         -- primeiros 12 chars para exibição
-    permissions  TEXT[] NOT NULL DEFAULT '{"chat","models"}',
-    last_used_at TIMESTAMPTZ,
-    revoked      BOOLEAN NOT NULL DEFAULT FALSE,
-    revoked_at   TIMESTAMPTZ,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key_hash      TEXT        NOT NULL UNIQUE,        -- SHA-256(key)
+    key_prefix    TEXT        NOT NULL,               -- "hsk_..." primeiros 8 chars
+    label         TEXT,
+    scopes        TEXT[]      NOT NULL DEFAULT '{}',  -- ["chat", "models"]
+    rate_limit_rpm INTEGER    NOT NULL DEFAULT 60,
+    is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
+    last_used_at  TIMESTAMPTZ,
+    expires_at    TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_api_keys_hash ON api_keys(key_hash) WHERE NOT revoked;
-CREATE INDEX idx_api_keys_user ON api_keys(user_id);
+CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+CREATE INDEX idx_api_keys_user_id  ON api_keys(user_id);
 
--- Modelos disponíveis
-CREATE TABLE models (
-    id                TEXT PRIMARY KEY,  -- 'hyscode-smart'
-    name              TEXT NOT NULL,
-    description       TEXT,
-    provider          TEXT NOT NULL,     -- 'anthropic', 'openai', etc
-    model_upstream    TEXT NOT NULL,     -- 'claude-3-5-sonnet-20241022'
-    context_window    INT,
-    supports_tools    BOOLEAN NOT NULL DEFAULT TRUE,
-    supports_vision   BOOLEAN NOT NULL DEFAULT FALSE,
-    tier_required     TEXT NOT NULL DEFAULT 'free',
-    price_per_1k_input  NUMERIC(10,6),
-    price_per_1k_output NUMERIC(10,6),
-    active            BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Log de requisições
+CREATE TABLE requests_log (
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    api_key_id        UUID        REFERENCES api_keys(id),
+    user_id           UUID        REFERENCES users(id),
+    model             TEXT        NOT NULL,
+    upstream_provider TEXT        NOT NULL,
+    prompt_tokens     INTEGER     NOT NULL DEFAULT 0,
+    completion_tokens INTEGER     NOT NULL DEFAULT 0,
+    total_tokens      INTEGER     NOT NULL DEFAULT 0,
+    latency_ms        INTEGER,
+    status_code       SMALLINT    NOT NULL,
+    error_message     TEXT,
+    requested_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Log de Uso (particionado por mês)
-CREATE TABLE usage_log (
-    id              UUID DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES users(id),
-    api_key_id      UUID NOT NULL REFERENCES api_keys(id),
-    request_id      TEXT NOT NULL,
-    model           TEXT NOT NULL,
-    provider_used   TEXT NOT NULL,
-    model_upstream  TEXT NOT NULL,
-    input_tokens    INT NOT NULL DEFAULT 0,
-    output_tokens   INT NOT NULL DEFAULT 0,
-    total_tokens    INT NOT NULL DEFAULT 0,
-    cost_usd        NUMERIC(12,8),
-    latency_ms      INT,
-    status          TEXT NOT NULL, -- 'success', 'error', 'rate_limited'
-    error_code      TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+CREATE INDEX idx_requests_log_user_id     ON requests_log(user_id);
+CREATE INDEX idx_requests_log_requested_at ON requests_log(requested_at DESC);
 
-    PRIMARY KEY (id, created_at)
-) PARTITION BY RANGE (created_at);
-
--- Índices de performance para usage_log
-CREATE INDEX idx_usage_log_user_date ON usage_log(user_id, created_at DESC);
-CREATE INDEX idx_usage_log_model ON usage_log(model, created_at DESC);
-
--- Provedores upstream (configuração dinâmica)
-CREATE TABLE upstream_providers (
-    id           TEXT PRIMARY KEY,
-    name         TEXT NOT NULL,
-    base_url     TEXT NOT NULL,
-    api_key_env  TEXT NOT NULL,       -- Variável de ambiente com a chave
-    priority     INT NOT NULL DEFAULT 1,
-    active       BOOLEAN NOT NULL DEFAULT TRUE,
-    health_check_url TEXT,
-    last_health_at   TIMESTAMPTZ,
-    is_healthy       BOOLEAN DEFAULT TRUE,
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+-- Quotas de uso mensal por usuário
+CREATE TABLE usage_quotas (
+    id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id        UUID        NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    monthly_tokens BIGINT      NOT NULL DEFAULT 0,
+    monthly_limit  BIGINT      NOT NULL DEFAULT 1000000,
+    reset_at       TIMESTAMPTZ NOT NULL DEFAULT (date_trunc('month', NOW()) + INTERVAL '1 month'),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -485,7 +538,7 @@ Value: <JSON da ChatResponse>
 Key: apikey_cache:{key_hash_prefix}
 Type: String (JSON)
 TTL: 300s (5 min)
-Value: {user_id, plan_id, permissions, revoked}
+Value: {user_id, tier, scopes, is_active}
 
 # Health check de provedores
 Key: provider_health:{provider_id}
@@ -501,39 +554,27 @@ Value: "healthy" | "degraded" | "down"
 ```sql
 -- Threads de conversa
 CREATE TABLE conversations (
-    id           TEXT PRIMARY KEY,   -- ulid ou uuid
+    id           TEXT PRIMARY KEY,   -- ulid
     title        TEXT,               -- Gerado automaticamente ou definido pelo usuário
     provider     TEXT NOT NULL,
     model        TEXT NOT NULL,
-    created_at   INTEGER NOT NULL,   -- Unix timestamp
-    updated_at   INTEGER NOT NULL,
-    project_dir  TEXT                -- Diretório do projeto associado
+    created_at   INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_at   INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 -- Mensagens
 CREATE TABLE messages (
-    id              TEXT PRIMARY KEY,
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
     conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     role            TEXT NOT NULL,   -- 'system', 'user', 'assistant', 'tool'
-    content         TEXT,
+    content         TEXT NOT NULL,
     tool_calls      TEXT,            -- JSON serializado
     tool_call_id    TEXT,
-    created_at      INTEGER NOT NULL,
-    token_count     INTEGER
+    is_error        INTEGER NOT NULL DEFAULT 0,
+    created_at      INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
-CREATE INDEX idx_messages_conv ON messages(conversation_id, created_at);
-
--- Uso acumulado (sem necessidade de servidor)
-CREATE TABLE local_usage (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    conversation_id TEXT REFERENCES conversations(id),
-    provider        TEXT NOT NULL,
-    model           TEXT NOT NULL,
-    input_tokens    INTEGER NOT NULL DEFAULT 0,
-    output_tokens   INTEGER NOT NULL DEFAULT 0,
-    created_at      INTEGER NOT NULL
-);
+CREATE INDEX idx_messages_conversation_id ON messages(conversation_id);
 ```
 
 ---

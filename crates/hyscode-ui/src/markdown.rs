@@ -2,17 +2,14 @@
 //!
 //! Usa pulldown-cmark para parse e syntect para syntax highlighting de blocos de código.
 
+use console::style;
 use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
 use syntect::{
-    easy::HighlightLines,
-    highlighting::ThemeSet,
-    parsing::SyntaxSet,
-    util::LinesWithEndings,
+    easy::HighlightLines, highlighting::ThemeSet, parsing::SyntaxSet, util::LinesWithEndings,
 };
-use console::style;
 
-static THEME_SET: std::sync::LazyLock<ThemeSet> = std::sync::LazyLock::new(ThemeSet::load_defaults);
-static SYNTAX_SET: std::sync::LazyLock<SyntaxSet> = std::sync::LazyLock::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: std::sync::OnceLock<ThemeSet> = std::sync::OnceLock::new();
+static SYNTAX_SET: std::sync::OnceLock<SyntaxSet> = std::sync::OnceLock::new();
 
 /// Renderiza uma string Markdown para o terminal.
 /// Retorna a string com formatação ANSI aplicada.
@@ -115,16 +112,21 @@ pub fn render_markdown(input: &str) -> String {
 
 /// Syntax highlighting de código usando syntect.
 fn highlight_code(code: &str, lang: &str) -> String {
-    let theme = &THEME_SET.themes["base16-ocean.dark"];
-    let syntax = SYNTAX_SET
+    let theme_set = THEME_SET.get_or_init(ThemeSet::load_defaults);
+    let syntax_set = SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_newlines);
+
+    let theme = &theme_set.themes["base16-ocean.dark"];
+    let syntax = syntax_set
         .find_syntax_by_token(lang)
-        .unwrap_or_else(|| SYNTAX_SET.find_syntax_plain_text());
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
 
     let mut highlighter = HighlightLines::new(syntax, theme);
     let mut output = String::new();
 
     for line in LinesWithEndings::from(code) {
-        let highlighted = highlighter.highlight_line(line, &SYNTAX_SET).unwrap_or_default();
+        let highlighted = highlighter
+            .highlight_line(line, syntax_set)
+            .unwrap_or_default();
         let escaped = syntect::util::as_24_bit_terminal_escaped(&highlighted, false);
         output.push_str(&escaped);
     }

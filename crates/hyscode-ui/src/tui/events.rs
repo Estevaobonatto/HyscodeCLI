@@ -1,7 +1,7 @@
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::time::Duration;
 
-use super::app::{AppStatus, ChatApp, Modal, SlashCommand, ThinkingLevel};
+use super::app::{ChatApp, Modal, SlashCommand, ThinkingLevel};
 
 pub enum AppEvent {
     Tick,
@@ -27,6 +27,11 @@ pub fn handle_event(app: &mut ChatApp, event: AppEvent) -> anyhow::Result<bool> 
 }
 
 fn handle_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
+    // Ignora eventos de tecla solta (Release) e repetição (Repeat)
+    // para evitar duplicação de input.
+    if key.kind == KeyEventKind::Release || key.kind == KeyEventKind::Repeat {
+        return Ok(false);
+    }
     // Ctrl+C sempre sai
     if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
         app.exit = true;
@@ -51,7 +56,7 @@ fn handle_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
             if let Some(cmd) = SlashCommand::parse(&app.input) {
                 app.clear_input();
                 handle_slash_command(app, cmd);
-            } else if let Some(text) = app.submit_input() {
+            } else if let Some(_text) = app.submit_input() {
                 return Ok(true); // sinaliza que há mensagem nova
             }
         }
@@ -148,8 +153,9 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
                         app.close_modal();
                     }
                     Modal::AgentSelection => {
-                        let agents = vec!["default", "code-review", "architecture", "debug"];
+                        let agents = ["default", "code-review", "architecture", "debug"];
                         if let Some(&agent) = agents.get(app.popup_selection) {
+                            app.set_agent(agent);
                             app.add_system_message(format!("Agente alterado para: {}", agent));
                         }
                         app.close_modal();
@@ -160,7 +166,10 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
         KeyCode::Char('t') | KeyCode::Char('T') => {
             if matches!(app.modal, Some(Modal::ModelSelection)) {
                 let levels = ThinkingLevel::all();
-                let current_idx = levels.iter().position(|&l| l == app.thinking_level).unwrap_or(0);
+                let current_idx = levels
+                    .iter()
+                    .position(|&l| l == app.thinking_level)
+                    .unwrap_or(0);
                 app.thinking_level = levels[(current_idx + 1) % levels.len()];
             }
         }

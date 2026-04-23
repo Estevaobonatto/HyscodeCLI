@@ -1,8 +1,8 @@
 //! Trait de ferramenta do agente.
 
+use crate::{error::ToolError, models::tool::ToolResult};
 use async_trait::async_trait;
 use serde_json::Value;
-use crate::{error::ToolError, models::tool::ToolResult};
 
 /// Porta para ferramentas executáveis pelo agente.
 #[async_trait]

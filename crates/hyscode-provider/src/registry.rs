@@ -1,7 +1,7 @@
 //! Registro de provedores — factory e seleção em runtime.
 
-use std::{collections::HashMap, sync::Arc};
 use hyscode_core::traits::provider::Provider;
+use std::{collections::HashMap, sync::Arc};
 
 /// Registro central de provedores configurados.
 pub struct ProviderRegistry {

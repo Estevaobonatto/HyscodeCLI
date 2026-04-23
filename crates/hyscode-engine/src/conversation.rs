@@ -17,12 +17,18 @@ impl ConversationManager {
     pub async fn new(db_path: impl AsRef<Path>) -> anyhow::Result<Self> {
         let db_path = db_path.as_ref();
 
-        // Garante que o diretório pai existe.
+        // Garante que o diretório pai existe e cria o arquivo vazio se necessário.
         if let Some(parent) = db_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
+        if !db_path.exists() {
+            tokio::fs::File::create(db_path).await?;
+        }
 
-        let database_url = format!("sqlite:{}", db_path.display());
+        let database_url = format!(
+            "sqlite:///{}",
+            db_path.to_string_lossy().replace('\\', "/")
+        );
         info!("Inicializando ConversationManager em {}", db_path.display());
 
         let pool = SqlitePoolOptions::new()
@@ -116,9 +122,7 @@ impl ConversationManager {
         message: &Message,
     ) -> anyhow::Result<()> {
         let (role, content, tool_calls, tool_call_id, is_error) = match message {
-            Message::System { content } => {
-                ("system", content.clone(), None, None, false)
-            }
+            Message::System { content } => ("system", content.clone(), None, None, false),
             Message::User { content } => {
                 let text = match content {
                     hyscode_core::models::message::MessageContent::Text(t) => t.clone(),
@@ -184,10 +188,7 @@ impl ConversationManager {
     }
 
     /// Carrega o histórico de mensagens de uma conversa.
-    pub async fn load_messages(
-        &self,
-        conversation_id: &str,
-    ) -> anyhow::Result<Vec<Message>> {
+    pub async fn load_messages(&self, conversation_id: &str) -> anyhow::Result<Vec<Message>> {
         let rows = sqlx::query(
             r#"
             SELECT role, content, tool_calls, tool_call_id, is_error
@@ -214,8 +215,12 @@ impl ConversationManager {
                 "user" => {
                     // Tenta desserializar como ContentPart array, senão usa Text
                     let content = if content.starts_with('[') {
-                        match serde_json::from_str::<Vec<hyscode_core::models::message::ContentPart>>(&content) {
-                            Ok(parts) => hyscode_core::models::message::MessageContent::Parts(parts),
+                        match serde_json::from_str::<Vec<hyscode_core::models::message::ContentPart>>(
+                            &content,
+                        ) {
+                            Ok(parts) => {
+                                hyscode_core::models::message::MessageContent::Parts(parts)
+                            }
                             Err(_) => hyscode_core::models::message::MessageContent::Text(content),
                         }
                     } else {
@@ -367,7 +372,10 @@ mod tests {
     #[tokio::test]
     async fn test_add_and_load_messages() {
         let manager = setup_manager().await;
-        let id = manager.create("anthropic", "claude-3-5-sonnet").await.unwrap();
+        let id = manager
+            .create("anthropic", "claude-3-5-sonnet")
+            .await
+            .unwrap();
 
         manager
             .add_message(
@@ -410,12 +418,10 @@ mod tests {
         }
 
         match &messages[1] {
-            Message::User { content } => {
-                match content {
-                    MessageContent::Text(t) => assert_eq!(t, "Olá"),
-                    _ => panic!("Esperado Text content"),
-                }
-            }
+            Message::User { content } => match content {
+                MessageContent::Text(t) => assert_eq!(t, "Olá"),
+                _ => panic!("Esperado Text content"),
+            },
             _ => panic!("Esperado User message"),
         }
 

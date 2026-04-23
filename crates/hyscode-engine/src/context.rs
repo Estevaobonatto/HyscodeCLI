@@ -111,7 +111,11 @@ impl ContextBuilder {
 
         let clean_text = clean_words.join(" ");
         let file_ctx = self.build_files_context(&mentioned_paths).await;
-        let ctx = if file_ctx.is_empty() { None } else { Some(file_ctx) };
+        let ctx = if file_ctx.is_empty() {
+            None
+        } else {
+            Some(file_ctx)
+        };
 
         (clean_text, ctx)
     }
@@ -299,7 +303,9 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_at_mentions_strips_tokens() {
         let builder = ContextBuilder::new(std::env::current_dir().unwrap());
-        let (text, _ctx) = builder.resolve_at_mentions("refatora @src/main.rs e @README.md").await;
+        let (text, _ctx) = builder
+            .resolve_at_mentions("refatora @src/main.rs e @README.md")
+            .await;
         assert_eq!(text, "refatora e");
     }
 

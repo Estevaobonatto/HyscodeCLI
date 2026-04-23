@@ -154,13 +154,32 @@ impl Task {
 
 #[derive(Debug, Clone)]
 pub enum TaskSystemEvent {
-    TaskCreated { task_id: String, description: String },
-    TaskStarted { task_id: String },
-    TaskProgress { task_id: String, agent_event: AgentEvent },
-    TaskCompleted { task_id: String, success: bool, summary: String },
-    TaskFailed { task_id: String, error: String },
-    TaskCancelled { task_id: String },
-    QueueChanged { pending_count: usize },
+    TaskCreated {
+        task_id: String,
+        description: String,
+    },
+    TaskStarted {
+        task_id: String,
+    },
+    TaskProgress {
+        task_id: String,
+        agent_event: AgentEvent,
+    },
+    TaskCompleted {
+        task_id: String,
+        success: bool,
+        summary: String,
+    },
+    TaskFailed {
+        task_id: String,
+        error: String,
+    },
+    TaskCancelled {
+        task_id: String,
+    },
+    QueueChanged {
+        pending_count: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +201,9 @@ impl TaskQueue {
     pub async fn enqueue(&self, task: Task) {
         let mut tasks = self.tasks.lock().await;
         // Insere mantendo ordem de prioridade (maior primeiro)
-        let idx = tasks.iter().position(|t| t.priority.as_u8() < task.priority.as_u8());
+        let idx = tasks
+            .iter()
+            .position(|t| t.priority.as_u8() < task.priority.as_u8());
         match idx {
             Some(i) => tasks.insert(i, task),
             None => tasks.push_back(task),
@@ -236,6 +257,7 @@ pub struct TaskRunner {
     queue: Arc<TaskQueue>,
     running: Arc<RwLock<bool>>,
     event_tx: Option<mpsc::UnboundedSender<TaskSystemEvent>>,
+    task_store: Option<Arc<TaskStore>>,
 }
 
 impl TaskRunner {
@@ -255,7 +277,13 @@ impl TaskRunner {
             queue: Arc::new(TaskQueue::new()),
             running: Arc::new(RwLock::new(false)),
             event_tx: None,
+            task_store: None,
         }
+    }
+
+    pub fn with_task_store(mut self, store: Arc<TaskStore>) -> Self {
+        self.task_store = Some(store);
+        self
     }
 
     pub fn with_event_sender(mut self, tx: mpsc::UnboundedSender<TaskSystemEvent>) -> Self {
@@ -324,6 +352,10 @@ impl TaskRunner {
                 task.status = TaskStatus::Running;
                 task.started_at = Some(chrono::Utc::now().timestamp());
 
+                if let Some(ref store) = self.task_store {
+                    let _ = store.save(&task).await;
+                }
+
                 let result = self.execute_task(&task).await;
 
                 match result {
@@ -338,6 +370,10 @@ impl TaskRunner {
                         task.iterations = agent_result.iterations;
                         task.tools_used = agent_result.tools_called;
                         task.messages = agent_result.messages;
+
+                        if let Some(ref store) = self.task_store {
+                            let _ = store.save(&task).await;
+                        }
 
                         if agent_result.success {
                             self.emit(TaskSystemEvent::TaskCompleted {
@@ -359,6 +395,10 @@ impl TaskRunner {
                         task.completed_at = Some(chrono::Utc::now().timestamp());
                         task.error_message = Some(e.to_string());
                         task.retry_count += 1;
+
+                        if let Some(ref store) = self.task_store {
+                            let _ = store.save(&task).await;
+                        }
 
                         if task.can_retry() {
                             warn!(task_id = %task.id, "Re-enfileirando para retry");
@@ -476,7 +516,9 @@ impl TaskStore {
         let tools_json = serde_json::to_string(&task.tools_used)?;
         let messages_json = serde_json::to_string(&task.messages)?;
         let status = task.status.to_string();
-        let priority = serde_json::to_string(&task.priority)?.trim_matches('"').to_owned();
+        let priority = serde_json::to_string(&task.priority)?
+            .trim_matches('"')
+            .to_owned();
 
         sqlx::query(
             r#"
@@ -516,61 +558,131 @@ impl TaskStore {
         Ok(())
     }
 
+    #[allow(clippy::type_complexity)]
     pub async fn get(&self, task_id: &str) -> anyhow::Result<Option<Task>> {
-        let row: Option<(String, String, String, String, i64, Option<i64>, Option<i64>,
-                         Option<String>, Option<String>, i64, String, String, i64, i64)> =
-            sqlx::query_as(
-                r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
+        let row: Option<(
+            String,
+            String,
+            String,
+            String,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+            i64,
+            String,
+            String,
+            i64,
+            i64,
+        )> = sqlx::query_as(
+            r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
                           result_summary, error_message, iterations, tools_used, messages,
                           retry_count, max_retries
                    FROM tasks WHERE id = ?"#,
-            )
-            .bind(task_id)
-            .fetch_optional(&self.pool)
-            .await?;
+        )
+        .bind(task_id)
+        .fetch_optional(&self.pool)
+        .await?;
 
         Ok(row.map(Self::row_to_task))
     }
 
+    #[allow(clippy::type_complexity)]
     pub async fn list(&self) -> anyhow::Result<Vec<Task>> {
-        let rows: Vec<(String, String, String, String, i64, Option<i64>, Option<i64>,
-                       Option<String>, Option<String>, i64, String, String, i64, i64)> =
-            sqlx::query_as(
-                r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            String,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+            i64,
+            String,
+            String,
+            i64,
+            i64,
+        )> = sqlx::query_as(
+            r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
                           result_summary, error_message, iterations, tools_used, messages,
                           retry_count, max_retries
                    FROM tasks ORDER BY created_at DESC"#,
-            )
-            .fetch_all(&self.pool)
-            .await?;
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
         Ok(rows.into_iter().map(Self::row_to_task).collect())
     }
 
+    #[allow(clippy::type_complexity)]
     pub async fn list_by_status(&self, status: TaskStatus) -> anyhow::Result<Vec<Task>> {
         let status_str = status.to_string();
-        let rows: Vec<(String, String, String, String, i64, Option<i64>, Option<i64>,
-                       Option<String>, Option<String>, i64, String, String, i64, i64)> =
-            sqlx::query_as(
-                r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            String,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+            i64,
+            String,
+            String,
+            i64,
+            i64,
+        )> = sqlx::query_as(
+            r#"SELECT id, description, status, priority, created_at, started_at, completed_at,
                           result_summary, error_message, iterations, tools_used, messages,
                           retry_count, max_retries
                    FROM tasks WHERE status = ? ORDER BY created_at DESC"#,
-            )
-            .bind(&status_str)
-            .fetch_all(&self.pool)
-            .await?;
+        )
+        .bind(&status_str)
+        .fetch_all(&self.pool)
+        .await?;
 
         Ok(rows.into_iter().map(Self::row_to_task).collect())
     }
 
+    #[allow(clippy::type_complexity)]
     fn row_to_task(
-        row: (String, String, String, String, i64, Option<i64>, Option<i64>,
-              Option<String>, Option<String>, i64, String, String, i64, i64),
+        row: (
+            String,
+            String,
+            String,
+            String,
+            i64,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+            i64,
+            String,
+            String,
+            i64,
+            i64,
+        ),
     ) -> Task {
-        let (id, description, status_str, priority_str, created_at, started_at, completed_at,
-             result_summary, error_message, iterations, tools_used_json, messages_json,
-             retry_count, max_retries) = row;
+        let (
+            id,
+            description,
+            status_str,
+            priority_str,
+            created_at,
+            started_at,
+            completed_at,
+            result_summary,
+            error_message,
+            iterations,
+            tools_used_json,
+            messages_json,
+            retry_count,
+            max_retries,
+        ) = row;
 
         let status = match status_str.as_str() {
             "running" => TaskStatus::Running,
@@ -654,11 +766,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_task_store() {
-        let store = TaskStore::new();
+        let store = TaskStore::new().await.unwrap();
         let task = Task::new("store test");
 
-        store.save(task.clone()).await;
-        let retrieved = store.get(&task.id).await;
+        store.save(&task).await.unwrap();
+        let retrieved = store.get(&task.id).await.unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().description, "store test");
     }

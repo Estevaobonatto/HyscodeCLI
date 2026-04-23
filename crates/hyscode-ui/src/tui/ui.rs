@@ -1,5 +1,4 @@
 use ratatui::{
-    backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
@@ -10,14 +9,18 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{AppStatus, ChatApp, ChatMessage, MessageRole, Modal};
+use super::app::{AppStatus, ChatApp, ChatMessage, MessageRole, Modal, Theme};
 
 pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
     let area = frame.size();
 
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(1), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(1),
+            Constraint::Length(3),
+        ])
         .split(area);
 
     draw_header(frame, app, main_chunks[0]);
@@ -29,7 +32,7 @@ pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
     }
 
     if app.show_help {
-        draw_help(frame, area);
+        draw_help(frame, app, area);
     }
 }
 
@@ -49,20 +52,26 @@ fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
     };
 
     let header_text = format!(
-        " {} Hyscode  |  Provedor: {}  |  Modelo: {}  |  Pensamento: {} ",
+        " {} Hyscode  |  Provedor: {}  |  Modelo: {}  |  Agente: {}  |  Pensamento: {} ",
         status_text,
         app.current_provider,
         app.current_model,
+        app.current_agent,
         app.thinking_level.as_str()
     );
 
     let header = Paragraph::new(header_text)
-        .style(Style::default().fg(Color::White).bg(Color::Black))
+        .style(Style::default().fg(app.theme.fg()).bg(app.theme.bg()))
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(status_color))
-                .title(Span::styled(" HyscodeCLI ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+                .title(Span::styled(
+                    " HyscodeCLI ",
+                    Style::default()
+                        .fg(app.theme.highlight())
+                        .add_modifier(Modifier::BOLD),
+                )),
         )
         .alignment(Alignment::Center);
 
@@ -72,8 +81,11 @@ fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
 fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(Span::styled(" Chat ", Style::default().fg(Color::Gray)));
+        .border_style(Style::default().fg(app.theme.border()))
+        .title(Span::styled(
+            " Chat ",
+            Style::default().fg(app.theme.fg_secondary()),
+        ));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -81,7 +93,7 @@ fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     let messages: Vec<Line> = app
         .messages
         .iter()
-        .flat_map(|msg| render_message(msg))
+        .flat_map(|m| render_message(m, app.theme))
         .collect();
 
     let text = Text::from(messages);
@@ -101,7 +113,7 @@ fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     frame.render_stateful_widget(scrollbar, inner, &mut state);
 }
 
-fn render_message(msg: &ChatMessage) -> Vec<Line> {
+fn render_message(msg: &ChatMessage, theme: Theme) -> Vec<Line<'_>> {
     let (prefix, color) = match msg.role {
         MessageRole::User => (" Você ", Color::Blue),
         MessageRole::Assistant => (" Agente ", Color::Green),
@@ -112,22 +124,27 @@ fn render_message(msg: &ChatMessage) -> Vec<Line> {
     let mut lines = Vec::new();
 
     let header = Line::from(vec![
-        Span::styled(prefix, Style::default().fg(color).add_modifier(Modifier::BOLD)),
-        Span::styled(" ─", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            prefix,
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" ─", Style::default().fg(theme.border())),
     ]);
     lines.push(header);
 
     for line in msg.content.lines() {
         lines.push(Line::from(Span::styled(
             format!("  {}", line),
-            Style::default().fg(Color::White),
+            Style::default().fg(theme.fg()),
         )));
     }
 
     if msg.is_streaming {
         lines.push(Line::from(Span::styled(
             "  ▌",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::SLOW_BLINK),
+            Style::default()
+                .fg(theme.highlight())
+                .add_modifier(Modifier::SLOW_BLINK),
         )));
     }
 
@@ -139,24 +156,26 @@ fn draw_input_bar(frame: &mut Frame, app: &ChatApp, area: Rect) {
     let border_color = if app.is_input_command() {
         Color::Yellow
     } else {
-        Color::Gray
+        app.theme.border()
     };
 
     let token_info = match &app.token_usage {
-        Some(u) if u.total_tokens > 0 => format!(
-            " Tokens: {}↑ {}↓ ",
-            u.prompt_tokens, u.completion_tokens
-        ),
+        Some(u) if u.total_tokens > 0 => {
+            format!(" Tokens: {}↑ {}↓ ", u.prompt_tokens, u.completion_tokens)
+        }
         _ => " Mensagem ".to_owned(),
     };
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
-        .title(Span::styled(token_info, Style::default().fg(Color::DarkGray)));
+        .title(Span::styled(
+            token_info,
+            Style::default().fg(app.theme.fg_secondary()),
+        ));
 
     let input = Paragraph::new(app.input.as_str())
-        .style(Style::default().fg(Color::White))
+        .style(Style::default().fg(app.theme.fg()))
         .block(block)
         .wrap(Wrap { trim: false });
 
@@ -206,9 +225,9 @@ fn draw_provider_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .enumerate()
         .map(|(i, &p)| {
             let style = if i == app.popup_selection {
-                Style::default().bg(Color::Blue).fg(Color::White)
+                Style::default().bg(Color::Blue).fg(app.theme.fg())
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(app.theme.fg())
             };
             ListItem::new(Line::from(Span::styled(format!(" {} ", p), style)))
         })
@@ -218,8 +237,13 @@ fn draw_provider_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(Span::styled(" Selecionar Provedor ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
-                .border_style(Style::default().fg(Color::Cyan)),
+                .title(Span::styled(
+                    " Selecionar Provedor ",
+                    Style::default()
+                        .fg(app.theme.highlight())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .border_style(Style::default().fg(app.theme.highlight())),
         )
         .highlight_symbol("▶ ");
 
@@ -236,9 +260,9 @@ fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .enumerate()
         .map(|(i, &m)| {
             let style = if i == app.popup_selection {
-                Style::default().bg(Color::Blue).fg(Color::White)
+                Style::default().bg(Color::Blue).fg(app.theme.fg())
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(app.theme.fg())
             };
             ListItem::new(Line::from(Span::styled(format!(" {} ", m), style)))
         })
@@ -250,9 +274,11 @@ fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
                 .borders(Borders::ALL)
                 .title(Span::styled(
                     format!(" Selecionar Modelo ({})", app.current_provider),
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.theme.highlight())
+                        .add_modifier(Modifier::BOLD),
                 ))
-                .border_style(Style::default().fg(Color::Cyan)),
+                .border_style(Style::default().fg(app.theme.highlight())),
         )
         .highlight_symbol("▶ ");
 
@@ -266,7 +292,7 @@ fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     };
 
     let info = Paragraph::new("Tab: nível de pensamento | Enter: selecionar | Esc: fechar")
-        .style(Style::default().fg(Color::Gray));
+        .style(Style::default().fg(app.theme.fg_secondary()));
     frame.render_widget(info, info_area);
 }
 
@@ -277,7 +303,9 @@ fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     let config_text = format!(
         " Provedor atual:    {}\n\
          Modelo atual:      {}\n\
+         Agente atual:      {}\n\
          Nível pensamento:  {}\n\
+         Tema:              {}\n\
          \n\
          Use /provider para mudar de provedor.\n\
          Use /models para mudar de modelo.\n\
@@ -286,15 +314,26 @@ fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
          As configurações são salvas automaticamente.",
         app.current_provider,
         app.current_model,
+        app.current_agent,
         app.thinking_level.as_str(),
+        if app.theme == Theme::Light {
+            "claro"
+        } else {
+            "escuro"
+        },
     );
 
     let paragraph = Paragraph::new(config_text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(Span::styled(" Configurações ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
-                .border_style(Style::default().fg(Color::Cyan)),
+                .title(Span::styled(
+                    " Configurações ",
+                    Style::default()
+                        .fg(app.theme.highlight())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .border_style(Style::default().fg(app.theme.highlight())),
         )
         .wrap(Wrap { trim: false });
 
@@ -305,15 +344,15 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     let area = centered_rect(60, 40, area);
     frame.render_widget(Clear, area);
 
-    let agents = vec!["default", "code-review", "architecture", "debug"];
+    let agents = ["default", "code-review", "architecture", "debug"];
     let items: Vec<ListItem> = agents
         .iter()
         .enumerate()
         .map(|(i, &a)| {
             let style = if i == app.popup_selection {
-                Style::default().bg(Color::Blue).fg(Color::White)
+                Style::default().bg(Color::Blue).fg(app.theme.fg())
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(app.theme.fg())
             };
             ListItem::new(Line::from(Span::styled(format!(" {} ", a), style)))
         })
@@ -323,32 +362,20 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(Span::styled(" Selecionar Agente ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
-                .border_style(Style::default().fg(Color::Cyan)),
+                .title(Span::styled(
+                    " Selecionar Agente ",
+                    Style::default()
+                        .fg(app.theme.highlight())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .border_style(Style::default().fg(app.theme.highlight())),
         )
         .highlight_symbol("▶ ");
 
     frame.render_widget(list, area);
 }
 
-fn draw_confirm_modal(frame: &mut Frame, _app: &ChatApp, message: String, area: Rect) {
-    let area = centered_rect(60, 30, area);
-    frame.render_widget(Clear, area);
-
-    let paragraph = Paragraph::new(message)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(" Confirmação ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
-                .border_style(Style::default().fg(Color::Yellow)),
-        )
-        .wrap(Wrap { trim: false })
-        .alignment(Alignment::Center);
-
-    frame.render_widget(paragraph, area);
-}
-
-fn draw_help(frame: &mut Frame, area: Rect) {
+fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
     let area = centered_rect(70, 70, area);
     frame.render_widget(Clear, area);
 
@@ -365,7 +392,9 @@ fn draw_help(frame: &mut Frame, area: Rect) {
     let mut text = Text::from(vec![
         Line::from(Span::styled(
             "Comandos disponíveis",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(app.theme.highlight())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
     ]);
@@ -373,38 +402,45 @@ fn draw_help(frame: &mut Frame, area: Rect) {
     for (cmd, desc) in commands {
         text.lines.push(Line::from(vec![
             Span::styled(format!("{:12}", cmd), Style::default().fg(Color::Yellow)),
-            Span::styled(desc, Style::default().fg(Color::White)),
+            Span::styled(desc, Style::default().fg(app.theme.fg())),
         ]));
     }
 
     text.lines.push(Line::from(""));
     text.lines.push(Line::from(Span::styled(
         "Atalhos:",
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(app.theme.highlight())
+            .add_modifier(Modifier::BOLD),
     )));
     text.lines.push(Line::from(vec![
         Span::styled("↑/↓       ", Style::default().fg(Color::Yellow)),
-        Span::styled("Scroll das mensagens", Style::default().fg(Color::White)),
+        Span::styled("Scroll das mensagens", Style::default().fg(app.theme.fg())),
     ]));
     text.lines.push(Line::from(vec![
         Span::styled("PgUp/PgDn ", Style::default().fg(Color::Yellow)),
-        Span::styled("Scroll rápido", Style::default().fg(Color::White)),
+        Span::styled("Scroll rápido", Style::default().fg(app.theme.fg())),
     ]));
     text.lines.push(Line::from(vec![
         Span::styled("Esc       ", Style::default().fg(Color::Yellow)),
-        Span::styled("Fecha modal / ajuda", Style::default().fg(Color::White)),
+        Span::styled("Fecha modal / ajuda", Style::default().fg(app.theme.fg())),
     ]));
     text.lines.push(Line::from(vec![
         Span::styled("Ctrl+C    ", Style::default().fg(Color::Yellow)),
-        Span::styled("Sai da aplicação", Style::default().fg(Color::White)),
+        Span::styled("Sai da aplicação", Style::default().fg(app.theme.fg())),
     ]));
 
     let paragraph = Paragraph::new(text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(Span::styled(" Ajuda ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
-                .border_style(Style::default().fg(Color::Cyan)),
+                .title(Span::styled(
+                    " Ajuda ",
+                    Style::default()
+                        .fg(app.theme.highlight())
+                        .add_modifier(Modifier::BOLD),
+                ))
+                .border_style(Style::default().fg(app.theme.highlight())),
         )
         .wrap(Wrap { trim: false });
 

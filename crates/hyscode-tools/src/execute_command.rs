@@ -1,5 +1,4 @@
-//! Ferramentas adicionais — stubs de execute_command e git_diff
+//! Re-exporta ExecuteCommandTool e GitDiffTool do módulo search_code.
 
-// Módulos exportados do search_code.rs para manter a estrutura dos módulos
 pub use crate::search_code::ExecuteCommandTool;
 pub use crate::search_code::GitDiffTool;

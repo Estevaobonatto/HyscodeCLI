@@ -11,7 +11,9 @@ pub struct SearchCodeTool;
 
 #[async_trait]
 impl Tool for SearchCodeTool {
-    fn name(&self) -> &str { "search_code" }
+    fn name(&self) -> &str {
+        "search_code"
+    }
     fn description(&self) -> &str {
         "Busca texto em arquivos do projeto. Retorna caminho:linha:conteúdo."
     }
@@ -28,10 +30,12 @@ impl Tool for SearchCodeTool {
     }
 
     async fn execute(&self, args: Value) -> Result<ToolResult, ToolError> {
-        let pattern = args["pattern"].as_str().ok_or_else(|| ToolError::InvalidArgs {
-            tool: self.name().to_owned(),
-            reason: "campo 'pattern' obrigatório".to_owned(),
-        })?;
+        let pattern = args["pattern"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs {
+                tool: self.name().to_owned(),
+                reason: "campo 'pattern' obrigatório".to_owned(),
+            })?;
         let root = args["path"].as_str().unwrap_or(".").to_owned();
         let glob = args["file_glob"].as_str().map(|s| s.to_owned());
         let pattern_lower = pattern.to_lowercase();
@@ -39,7 +43,12 @@ impl Tool for SearchCodeTool {
         // Busca síncrona em blocking task
         let results = tokio::task::spawn_blocking(move || {
             let mut matches = Vec::new();
-            search_recursive(Path::new(&root), &pattern_lower, glob.as_deref(), &mut matches)?;
+            search_recursive(
+                Path::new(&root),
+                &pattern_lower,
+                glob.as_deref(),
+                &mut matches,
+            )?;
             Ok::<Vec<String>, ToolError>(matches)
         })
         .await
@@ -47,12 +56,19 @@ impl Tool for SearchCodeTool {
 
         let results = results?;
         if results.is_empty() {
-            Ok(ToolResult::success("", "Nenhum resultado encontrado.".to_owned()))
+            Ok(ToolResult::success(
+                "",
+                "Nenhum resultado encontrado.".to_owned(),
+            ))
         } else {
             let output = results.join("\n");
             // Limita output para não estourar contexto
             let limited = if output.len() > 8000 {
-                format!("{}\n... (truncado, {} resultados)", &output[..8000], results.len())
+                format!(
+                    "{}\n... (truncado, {} resultados)",
+                    &output[..8000],
+                    results.len()
+                )
             } else {
                 output
             };
@@ -103,7 +119,8 @@ fn search_recursive(
             if let Ok(content) = std::fs::read_to_string(&path) {
                 for (line_num, line) in content.lines().enumerate() {
                     if line.to_lowercase().contains(pattern_lower) {
-                        let rel = path.strip_prefix(".")
+                        let rel = path
+                            .strip_prefix(".")
                             .unwrap_or(&path)
                             .display()
                             .to_string()
@@ -129,7 +146,9 @@ pub struct ExecuteCommandTool;
 
 #[async_trait]
 impl Tool for ExecuteCommandTool {
-    fn name(&self) -> &str { "execute_command" }
+    fn name(&self) -> &str {
+        "execute_command"
+    }
     fn description(&self) -> &str {
         "Executa um comando shell e retorna stdout e stderr combinados."
     }
@@ -143,14 +162,20 @@ impl Tool for ExecuteCommandTool {
             "required": ["command"]
         })
     }
-    fn requires_confirmation(&self) -> bool { true }
-    fn is_destructive(&self) -> bool { true }
+    fn requires_confirmation(&self) -> bool {
+        true
+    }
+    fn is_destructive(&self) -> bool {
+        true
+    }
 
     async fn execute(&self, args: Value) -> Result<ToolResult, ToolError> {
-        let command = args["command"].as_str().ok_or_else(|| ToolError::InvalidArgs {
-            tool: self.name().to_owned(),
-            reason: "campo 'command' obrigatório".to_owned(),
-        })?;
+        let command = args["command"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArgs {
+                tool: self.name().to_owned(),
+                reason: "campo 'command' obrigatório".to_owned(),
+            })?;
         let timeout_secs = args["timeout_secs"].as_u64().unwrap_or(30).min(300);
 
         // Rejeita comandos que contenham tentativas de escalonamento de privilégios.
@@ -184,9 +209,7 @@ impl Tool for ExecuteCommandTool {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let exit_code = output.status.code().unwrap_or(-1);
 
-        let result = format!(
-            "Exit code: {exit_code}\nstdout:\n{stdout}\nstderr:\n{stderr}"
-        );
+        let result = format!("Exit code: {exit_code}\nstdout:\n{stdout}\nstderr:\n{stderr}");
 
         if output.status.success() {
             Ok(ToolResult::success("", result))
@@ -202,7 +225,9 @@ pub struct GitDiffTool;
 
 #[async_trait]
 impl Tool for GitDiffTool {
-    fn name(&self) -> &str { "git_diff" }
+    fn name(&self) -> &str {
+        "git_diff"
+    }
     fn description(&self) -> &str {
         "Retorna o diff do repositório git. Por padrão retorna staged + unstaged changes."
     }
@@ -218,7 +243,9 @@ impl Tool for GitDiffTool {
         let staged_only = args["staged_only"].as_bool().unwrap_or(false);
         let mut cmd = tokio::process::Command::new("git");
         cmd.arg("diff");
-        if staged_only { cmd.arg("--cached"); }
+        if staged_only {
+            cmd.arg("--cached");
+        }
 
         let output = cmd.output().await.map_err(ToolError::Io)?;
         let diff = String::from_utf8_lossy(&output.stdout).into_owned();
@@ -270,7 +297,10 @@ mod tests {
     #[tokio::test]
     async fn test_execute_command_echo() {
         let tool = ExecuteCommandTool;
-        let result = tool.execute(json!({"command": "echo hello"})).await.unwrap();
+        let result = tool
+            .execute(json!({"command": "echo hello"}))
+            .await
+            .unwrap();
         assert!(result.content.contains("hello"));
         assert!(!result.is_error);
     }

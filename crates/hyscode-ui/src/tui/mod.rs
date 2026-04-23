@@ -20,9 +20,7 @@ use events::{handle_event, read_event};
 /// Executa o loop principal da aplicação TUI.
 /// Retorna (app, last_user_message) quando o usuário envia uma mensagem.
 /// Se o usuário sair, retorna None.
-pub async fn run_app(
-    app: &mut ChatApp,
-) -> anyhow::Result<Option<String>> {
+pub async fn run_app(app: &mut ChatApp) -> anyhow::Result<Option<String>> {
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -70,10 +68,7 @@ async fn run_app_loop<B: Backend>(
 }
 
 /// Atualiza o estado da TUI sem bloquear (para streaming).
-pub fn draw_frame<B: Backend>(
-    terminal: &mut Terminal<B>,
-    app: &mut ChatApp,
-) -> anyhow::Result<()> {
+pub fn draw_frame<B: Backend>(terminal: &mut Terminal<B>, app: &mut ChatApp) -> anyhow::Result<()> {
     terminal.draw(|f| ui::draw(f, app))?;
     Ok(())
 }

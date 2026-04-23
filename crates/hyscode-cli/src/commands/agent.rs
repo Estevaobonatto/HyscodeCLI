@@ -29,17 +29,22 @@ pub async fn run(
     let provider = registry
         .get(&provider_name)
         .or_else(|| registry.default_provider())
-        .ok_or_else(|| anyhow::anyhow!("Nenhum provedor configurado. Use `hyscode provider add`."))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Nenhum provedor configurado. Use `hyscode provider add`.")
+        })?;
 
     println!("🤖 Agente autônomo iniciado");
     println!("Tarefa: {}", task);
     println!("Provedor: {} | Modelo: {}", provider_name, model);
-    println!("Auto-aprovar: {} | Audit-only: {}", auto_approve, audit_only);
+    println!(
+        "Auto-aprovar: {} | Audit-only: {}",
+        auto_approve, audit_only
+    );
     println!();
 
     let tool_registry = Arc::new(ToolRegistry::with_defaults());
-    let context = ContextBuilder::new(std::env::current_dir()?)
-        .with_system_prompt(agent_system_prompt());
+    let context =
+        ContextBuilder::new(std::env::current_dir()?).with_system_prompt(agent_system_prompt());
 
     let agent_config = AgentConfig {
         model: model.clone(),
@@ -71,9 +76,18 @@ pub async fn run(
                 AgentEvent::ToolExecuting { name, .. } => {
                     println!("  🔧 Executando: {}", name);
                 }
-                AgentEvent::ToolExecuted { name, success, preview } => {
+                AgentEvent::ToolExecuted {
+                    name,
+                    success,
+                    preview,
+                } => {
                     let icon = if success { "✅" } else { "❌" };
-                    println!("  {} {}: {}", icon, name, preview.lines().next().unwrap_or(""));
+                    println!(
+                        "  {} {}: {}",
+                        icon,
+                        name,
+                        preview.lines().next().unwrap_or("")
+                    );
                 }
                 AgentEvent::PermissionRequested { tool, .. } => {
                     if !auto_approve && !audit_only {
@@ -83,7 +97,10 @@ pub async fn run(
                 AgentEvent::PermissionDenied { tool, reason } => {
                     println!("  🚫 {} negado: {}", tool, reason);
                 }
-                AgentEvent::LoopFinished { success, iterations } => {
+                AgentEvent::LoopFinished {
+                    success,
+                    iterations,
+                } => {
                     let icon = if success { "✅" } else { "⚠️" };
                     println!("  {} Loop finalizado em {} iterações", icon, iterations);
                 }
@@ -109,14 +126,9 @@ pub async fn run(
         PermissionManager::new(perm_config, Arc::new(CliPermissionCallback))
     };
 
-    let agent = AgentLoop::new(
-        provider,
-        tool_registry,
-        context,
-        agent_config,
-    )
-    .with_permission_manager(pm)
-    .with_event_sender(agent_tx);
+    let agent = AgentLoop::new(provider, tool_registry, context, agent_config)
+        .with_permission_manager(pm)
+        .with_event_sender(agent_tx);
 
     let result = agent.run(&task).await?;
 
@@ -134,7 +146,10 @@ pub async fn run(
     }
 
     if !result.tools_called.is_empty() {
-        println!("\nFerramentas utilizadas: {}", result.tools_called.join(", "));
+        println!(
+            "\nFerramentas utilizadas: {}",
+            result.tools_called.join(", ")
+        );
     }
 
     Ok(())
@@ -158,7 +173,7 @@ Regras:
 4. Se encontrar erro, leia o arquivo relevante e corrija
 5. Ao final, explique o que foi feito
 6. Nunca execute comandos destrutivos sem confirmar"#
-    .to_owned()
+        .to_owned()
 }
 
 /// Callback de permissão interativo para o modo CLI.

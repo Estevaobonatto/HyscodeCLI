@@ -1,22 +1,18 @@
 //! Renderização de respostas em streaming no terminal.
 
-use console::{style, Term};
+use console::style;
 use hyscode_core::models::response::ChatChunk;
 
 /// Renderiza chunks de streaming diretamente no terminal.
 pub struct StreamRenderer {
-    term: Term,
     buffer: String,
-    markdown_enabled: bool,
     show_token_count: bool,
 }
 
 impl StreamRenderer {
-    pub fn new(markdown_enabled: bool, show_token_count: bool) -> Self {
+    pub fn new(_markdown_enabled: bool, show_token_count: bool) -> Self {
         Self {
-            term: Term::stdout(),
             buffer: String::new(),
-            markdown_enabled,
             show_token_count,
         }
     }

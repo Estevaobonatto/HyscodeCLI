@@ -9,7 +9,7 @@
 //! Design principle: fail-closed. Sem permissão explícita = negação.
 
 use async_trait::async_trait;
-use hyscode_core::{error::ToolError, models::tool::ToolResult};
+use hyscode_core::error::ToolError;
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::{debug, info, warn};

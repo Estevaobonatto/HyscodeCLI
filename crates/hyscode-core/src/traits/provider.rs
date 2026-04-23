@@ -1,7 +1,5 @@
 //! Trait de provedor de LLM — porta da arquitetura hexagonal.
 
-use async_trait::async_trait;
-use futures::stream::BoxStream;
 use crate::{
     error::ProviderError,
     models::{
@@ -10,6 +8,8 @@ use crate::{
         response::{ChatChunk, ChatResponse},
     },
 };
+use async_trait::async_trait;
+use futures::stream::BoxStream;
 
 /// Porta de saída para provedores de LLM.
 ///

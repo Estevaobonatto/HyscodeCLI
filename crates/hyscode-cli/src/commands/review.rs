@@ -1,14 +1,9 @@
 //! Comando `hyscode review` — revisa o diff atual com LLM.
 
-use std::sync::Arc;
-
 use anyhow::Context;
 use futures::stream::StreamExt;
 use hyscode_config::load_config;
-use hyscode_core::{
-    models::{message::Message, request::ChatRequest},
-    traits::provider::Provider,
-};
+use hyscode_core::models::{message::Message, request::ChatRequest};
 
 use super::providers::{build_registry, resolve_model_alias};
 
@@ -61,8 +56,12 @@ pub async fn run(
     let user_content = format!("Revise este diff:\n\n```diff\n{}\n```", diff_preview);
 
     let messages = vec![
-        Message::System { content: REVIEW_SYSTEM_PROMPT.to_owned() },
-        Message::User { content: user_content.into() },
+        Message::System {
+            content: REVIEW_SYSTEM_PROMPT.to_owned(),
+        },
+        Message::User {
+            content: user_content.into(),
+        },
     ];
 
     let request = ChatRequest::new(&model, messages).with_stream();

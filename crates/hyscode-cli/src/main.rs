@@ -2,7 +2,7 @@
 //!
 //! Entry point do binário. Parse de argumentos e dispatch para comandos.
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 mod commands;
 mod oauth;
@@ -17,7 +17,7 @@ mod oauth;
 )]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 
     /// Provedor de LLM a usar (sobrescreve configuração)
     #[arg(long, short = 'p', global = true)]
@@ -151,30 +151,39 @@ async fn main() -> anyhow::Result<()> {
     // Inicializa logging com base no nível de verbosidade
     init_logging(cli.verbose);
 
-    // Despacha para o comando correto
+    // Se não há configuração salva, roda o onboarding antes de qualquer coisa
+    let config_path = hyscode_config::file::config_path();
+    if !config_path.exists() {
+        println!("👋 Bem-vindo ao HyscodeCLI! Vamos configurar seu ambiente.\n");
+        commands::init::run().await?;
+    }
+
+    // Despacha para o comando correto (sem subcomando = chat interativo)
     match cli.command {
-        Commands::Chat { message, context } => {
+        Some(Commands::Chat { message, context }) => {
             commands::chat::run(message, context, cli.provider, cli.model).await
         }
-        Commands::Agent { task, auto_approve, audit_only } => {
-            commands::agent::run(task, auto_approve, audit_only, cli.provider, cli.model).await
-        }
-        Commands::Provider { action } => {
-            commands::provider::run(action).await
-        }
-        Commands::Config { action } => {
-            commands::config::run(action).await
-        }
-        Commands::Init => commands::init::run().await,
-        Commands::History { limit } => commands::history::run(limit).await,
-        Commands::Undo { steps } => commands::undo::run(steps).await,
-        Commands::Review { staged } => {
+        Some(Commands::Agent {
+            task,
+            auto_approve,
+            audit_only,
+        }) => commands::agent::run(task, auto_approve, audit_only, cli.provider, cli.model).await,
+        Some(Commands::Provider { action }) => commands::provider::run(action).await,
+        Some(Commands::Config { action }) => commands::config::run(action).await,
+        Some(Commands::Init) => commands::init::run().await,
+        Some(Commands::History { limit }) => commands::history::run(limit).await,
+        Some(Commands::Undo { steps }) => commands::undo::run(steps).await,
+        Some(Commands::Review { staged }) => {
             commands::review::run(staged, cli.provider, cli.model).await
         }
-        Commands::Commit { all } => commands::commit::run(all).await,
-        Commands::Completions { shell } => {
+        Some(Commands::Commit { all }) => commands::commit::run(all).await,
+        Some(Commands::Completions { shell }) => {
             commands::completions::run(shell);
             Ok(())
+        }
+        None => {
+            // Sem subcomando: entra direto no chat interativo
+            commands::chat::run(None, vec![], cli.provider, cli.model).await
         }
     }
 }
@@ -189,8 +198,7 @@ fn init_logging(verbose: u8) {
         _ => "trace",
     };
 
-    let filter = EnvFilter::try_from_env("HYSCODE_LOG")
-        .unwrap_or_else(|_| EnvFilter::new(level));
+    let filter = EnvFilter::try_from_env("HYSCODE_LOG").unwrap_or_else(|_| EnvFilter::new(level));
 
     fmt::Subscriber::builder()
         .with_env_filter(filter)

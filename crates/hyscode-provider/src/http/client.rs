@@ -3,8 +3,8 @@
 //! Centraliza: connection pool, retry com backoff exponencial,
 //! logging de requisições, e configuração de TLS.
 
-use std::time::Duration;
 use reqwest::{Client, ClientBuilder};
+use std::time::Duration;
 
 /// Constrói o cliente HTTP padrão para todos os adapters.
 pub fn build_client(timeout_secs: u64) -> Client {
@@ -42,9 +42,8 @@ impl Default for RetryConfig {
 impl RetryConfig {
     /// Calcula o delay para a tentativa `attempt` (0-indexed).
     pub fn delay_for(&self, attempt: u32) -> Duration {
-        let delay_ms = (self.initial_delay_ms as f64
-            * self.backoff_multiplier.powi(attempt as i32))
-        .min(self.max_delay_ms as f64) as u64;
+        let delay_ms = (self.initial_delay_ms as f64 * self.backoff_multiplier.powi(attempt as i32))
+            .min(self.max_delay_ms as f64) as u64;
 
         Duration::from_millis(delay_ms)
     }

@@ -4,10 +4,7 @@
 //! - OpenAI: `data: {...}\n\n`, termina com `data: [DONE]`
 //! - Anthropic: eventos com campo `event:` antes do `data:`
 
-use bytes::Bytes;
-use futures::Stream;
 use hyscode_core::models::enums::{SSE_DATA_PREFIX, SSE_DONE_SENTINEL};
-use std::pin::Pin;
 
 /// Evento SSE bruto, antes de parse do JSON.
 #[derive(Debug, Clone)]
@@ -25,14 +22,10 @@ impl SseEvent {
 
 /// Parseia uma linha de SSE em um evento, se aplicável.
 pub fn parse_sse_line(line: &str) -> Option<SseEvent> {
-    if let Some(data) = line.strip_prefix(SSE_DATA_PREFIX) {
-        Some(SseEvent {
-            event_type: None,
-            data: data.to_owned(),
-        })
-    } else {
-        None
-    }
+    line.strip_prefix(SSE_DATA_PREFIX).map(|data| SseEvent {
+        event_type: None,
+        data: data.to_owned(),
+    })
 }
 
 /// Parseia um bloco completo de SSE (pode conter event: e data:).
@@ -48,5 +41,8 @@ pub fn parse_sse_block(block: &str) -> Option<SseEvent> {
         }
     }
 
-    data.map(|d| SseEvent { event_type, data: d })
+    data.map(|d| SseEvent {
+        event_type,
+        data: d,
+    })
 }

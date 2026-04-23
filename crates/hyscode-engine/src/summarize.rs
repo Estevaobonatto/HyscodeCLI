@@ -71,7 +71,10 @@ pub async fn maybe_summarize(
     }
 
     // Calcula tokens totais da conversa atual
-    let total_tokens: u32 = messages.iter().map(|m| estimator.estimate(&message_text(m))).sum();
+    let total_tokens: u32 = messages
+        .iter()
+        .map(|m| estimator.estimate(&message_text(m)))
+        .sum();
     let threshold = (estimator.model_context_limit as f32 * SUMMARIZE_THRESHOLD) as u32;
 
     if total_tokens <= threshold {
@@ -86,8 +89,9 @@ pub async fn maybe_summarize(
     );
 
     // Separa system prompt e histórico de conversação
-    let (system_msgs, history): (Vec<&Message>, Vec<&Message>) =
-        messages.iter().partition(|m| matches!(m, Message::System { .. }));
+    let (system_msgs, history): (Vec<&Message>, Vec<&Message>) = messages
+        .iter()
+        .partition(|m| matches!(m, Message::System { .. }));
 
     // Mantém as últimas N mensagens fora do resumo para continuidade
     let keep_recent = 6usize.min(history.len());

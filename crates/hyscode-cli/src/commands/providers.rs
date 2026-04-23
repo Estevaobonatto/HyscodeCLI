@@ -5,11 +5,7 @@
 
 use std::sync::Arc;
 
-use hyscode_config::{
-    env::api_key_from_env,
-    file::Config,
-    keyring::get_api_key,
-};
+use hyscode_config::{env::api_key_from_env, file::Config, vault::get_api_key};
 use hyscode_provider::{
     adapters::{
         anthropic::{AnthropicAdapter, AnthropicConfig},

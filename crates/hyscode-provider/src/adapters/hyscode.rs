@@ -13,7 +13,7 @@ use hyscode_core::{
         message::{Message, MessageContent},
         provider::{ModelInfo, ProviderCapabilities},
         request::ChatRequest,
-        response::{ChatChunk, ChatResponse, Delta, FinishReason, ToolCallDelta},
+        response::{ChatChunk, ChatResponse, Delta, FinishReason},
         usage::TokenUsage,
     },
     traits::provider::Provider,
@@ -69,10 +69,7 @@ impl HyscodeProviderAdapter {
             reqwest::header::AUTHORIZATION,
             format!("Bearer {}", self.config.api_key).parse()?,
         );
-        headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            "application/json".parse()?,
-        );
+        headers.insert(reqwest::header::CONTENT_TYPE, "application/json".parse()?);
         Ok(headers)
     }
 }
@@ -123,12 +120,11 @@ impl Provider for HyscodeProviderAdapter {
             });
         }
 
-        let hyscode_resp: HyscodeChatResponse = response.json().await.map_err(|e| {
-            ProviderError::Http {
+        let hyscode_resp: HyscodeChatResponse =
+            response.json().await.map_err(|e| ProviderError::Http {
                 status: 0,
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         Ok(hyscode_resp.into_chat_response())
     }
@@ -204,12 +200,11 @@ impl Provider for HyscodeProviderAdapter {
             });
         }
 
-        let models_resp: HyscodeModelsResponse = response.json().await.map_err(|e| {
-            ProviderError::Http {
+        let models_resp: HyscodeModelsResponse =
+            response.json().await.map_err(|e| ProviderError::Http {
                 status: 0,
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         Ok(models_resp
             .data
@@ -320,9 +315,9 @@ impl HyscodeChatRequest {
                             MessageContent::Parts(parts) => parts
                                 .into_iter()
                                 .filter_map(|p| match p {
-                                    hyscode_core::models::message::ContentPart::Text {
-                                        text,
-                                    } => Some(text),
+                                    hyscode_core::models::message::ContentPart::Text { text } => {
+                                        Some(text)
+                                    }
                                     _ => None,
                                 })
                                 .collect::<Vec<_>>()
@@ -447,15 +442,15 @@ impl HyscodeStreamEvent {
             })
             .unwrap_or_default();
 
-        let finish_reason = choice.and_then(|c| c.finish_reason).and_then(|r| {
-            match r.as_str() {
-                "stop" => Some(FinishReason::Stop),
-                "length" => Some(FinishReason::Length),
-                "tool_calls" => Some(FinishReason::ToolCalls),
-                "content_filter" => Some(FinishReason::ContentFilter),
-                _ => Some(FinishReason::Error),
-            }
-        });
+        let finish_reason = choice
+            .and_then(|c| c.finish_reason)
+            .map(|r| match r.as_str() {
+                "stop" => FinishReason::Stop,
+                "length" => FinishReason::Length,
+                "tool_calls" => FinishReason::ToolCalls,
+                "content_filter" => FinishReason::ContentFilter,
+                _ => FinishReason::Error,
+            });
 
         ChatChunk {
             id: self.id,

@@ -1,3 +1,4 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -8,12 +9,10 @@ use hyscode_core::{
     traits::provider::Provider,
 };
 use hyscode_engine::{
-    context::ContextBuilder,
-    conversation::ConversationManager,
-    maybe_summarize,
+    context::ContextBuilder, conversation::ConversationManager, maybe_summarize,
     token::TokenEstimator,
 };
-use hyscode_ui::tui::app::{AppStatus, ChatApp, MessageRole};
+use hyscode_ui::tui::app::{AppStatus, ChatApp, MessageRole, Theme};
 use hyscode_ui::tui::events::{handle_event, read_event};
 use hyscode_ui::tui::ui::draw;
 use ratatui::{
@@ -68,18 +67,18 @@ pub async fn run(
         .context("Nenhum provedor configurado. Use `hyscode provider add`.")?;
 
     // Inicializa o ConversationManager para persistência.
-    let conv_manager = ConversationManager::new(conversations_db_path()).await?;
+    let db_path = conversations_db_path();
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent).context("Falha ao criar diretório do banco de conversas")?;
+    }
+    let conv_manager = ConversationManager::new(db_path).await?;
     let conv_id = conv_manager.create(&provider_name, &model).await?;
 
     // Monta o ContextBuilder com arquivos extras da flag --context
-    let extra_files: Vec<std::path::PathBuf> = context
-        .iter()
-        .map(|s| std::path::PathBuf::from(s))
-        .collect();
-    let ctx_builder = Arc::new(
-        ContextBuilder::new(std::env::current_dir()?)
-            .with_extra_files(extra_files),
-    );
+    let extra_files: Vec<std::path::PathBuf> =
+        context.iter().map(std::path::PathBuf::from).collect();
+    let ctx_builder =
+        Arc::new(ContextBuilder::new(std::env::current_dir()?).with_extra_files(extra_files));
 
     // Modo não-interativo: apenas imprime a resposta sem TUI
     if !is_interactive() {
@@ -87,8 +86,15 @@ pub async fn run(
         if msg.is_empty() {
             anyhow::bail!("Modo não-interativo requer uma mensagem como argumento.");
         }
-        return run_non_interactive(&provider, &model, msg, &ctx_builder, &conv_manager, &conv_id)
-            .await;
+        return run_non_interactive(
+            &provider,
+            &model,
+            msg,
+            &ctx_builder,
+            &conv_manager,
+            &conv_id,
+        )
+        .await;
     }
 
     // TUI setup
@@ -100,7 +106,8 @@ pub async fn run(
 
     // Constrói system prompt com contexto de arquivos + ambiente
     let system_prompt = ctx_builder.build_system_prompt().await.unwrap_or_default();
-    let mut app = ChatApp::new(provider_name.clone(), model.clone());
+    let theme = Theme::from_str(&config.ui.theme).unwrap_or_default();
+    let mut app = ChatApp::new(provider_name.clone(), model.clone(), theme);
     if !system_prompt.is_empty() {
         app.set_system_prompt(system_prompt);
     }
@@ -160,15 +167,24 @@ async fn run_non_interactive(
     let mut messages = Vec::new();
     let system_prompt = ctx_builder.build_system_prompt().await.unwrap_or_default();
     if !system_prompt.is_empty() {
-        messages.push(Message::System { content: system_prompt });
+        messages.push(Message::System {
+            content: system_prompt,
+        });
     }
     if let Some(ctx) = file_ctx {
         messages.push(Message::System { content: ctx });
     }
-    messages.push(Message::User { content: clean_text.clone().into() });
+    messages.push(Message::User {
+        content: clean_text.clone().into(),
+    });
 
     let _ = conv_manager
-        .add_message(conv_id, &Message::User { content: clean_text.into() })
+        .add_message(
+            conv_id,
+            &Message::User {
+                content: clean_text.into(),
+            },
+        )
         .await;
 
     let request = ChatRequest::new(model, messages).with_stream();
@@ -247,6 +263,7 @@ async fn run_chat_loop<B: Backend>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn process_message<B: Backend>(
     provider: &Arc<dyn Provider>,
     model: &str,
@@ -274,7 +291,9 @@ async fn process_message<B: Backend>(
     let _ = conv_manager
         .add_message(
             conv_id,
-            &Message::User { content: clean_text.clone().into() },
+            &Message::User {
+                content: clean_text.clone().into(),
+            },
         )
         .await;
 
@@ -287,7 +306,9 @@ async fn process_message<B: Backend>(
 
     // Auto-sumarização quando contexto excede 85% do limite
     let estimator = TokenEstimator::new(128_000);
-    if let Ok(Some(condensed)) = maybe_summarize(&messages, provider.clone(), model, &estimator).await {
+    if let Ok(Some(condensed)) =
+        maybe_summarize(&messages, provider.clone(), model, &estimator).await
+    {
         messages = condensed;
     }
 
@@ -364,7 +385,9 @@ fn build_messages(app: &ChatApp) -> Vec<Message> {
 
     // System prompt definido pelo ContextBuilder (via app.system_prompt)
     if let Some(ref sp) = app.system_prompt {
-        msgs.push(Message::System { content: sp.clone() });
+        msgs.push(Message::System {
+            content: sp.clone(),
+        });
     } else {
         msgs.push(Message::System {
             content: "Você é um agente de codificação especializado em Rust.".to_owned(),
