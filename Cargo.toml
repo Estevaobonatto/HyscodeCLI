@@ -49,6 +49,7 @@ indicatif      = "0.17"
 dialoguer      = "0.11"
 syntect        = "5"
 pulldown-cmark = "0.11"
+unicode-width  = "0.2"
 
 # Banco de dados
 sqlx           = { version = "0.8", features = ["runtime-tokio", "sqlite", "uuid", "chrono"] }

@@ -156,14 +156,15 @@ impl Provider for OpenAIAdapter {
         }
 
         let byte_stream = response.bytes_stream();
-        let stream = byte_stream.filter_map(|result| async move {
-            match result {
-                Ok(bytes) => Some(parse_sse_bytes(bytes)),
-                Err(e) => Some(Err(ProviderError::Http {
+        let stream = byte_stream.flat_map(|result| {
+            let items: Vec<Result<ChatChunk, ProviderError>> = match result {
+                Ok(bytes) => parse_sse_bytes(bytes),
+                Err(e) => vec![Err(ProviderError::Http {
                     status: 0,
                     message: e.to_string(),
-                })),
-            }
+                })],
+            };
+            futures::stream::iter(items)
         });
 
         Ok(Box::pin(stream))
@@ -241,29 +242,34 @@ impl Provider for OpenAIAdapter {
     }
 }
 
-fn parse_sse_bytes(bytes: Bytes) -> Result<ChatChunk, ProviderError> {
+fn parse_sse_bytes(bytes: Bytes) -> Vec<Result<ChatChunk, ProviderError>> {
     let text = String::from_utf8_lossy(&bytes);
+    let mut chunks = Vec::new();
     for line in text.lines() {
         if let Some(data) = line.strip_prefix("data: ") {
             if data.trim() == "[DONE]" {
-                return Ok(ChatChunk {
+                chunks.push(Ok(ChatChunk {
                     id: String::new(),
                     delta: Delta::default(),
                     finish_reason: Some(FinishReason::Stop),
                     usage: None,
-                });
+                }));
+                continue;
             }
             if let Ok(event) = serde_json::from_str::<OpenAIStreamEvent>(data) {
-                return Ok(event.into_chat_chunk());
+                chunks.push(Ok(event.into_chat_chunk()));
             }
         }
     }
-    Ok(ChatChunk {
-        id: String::new(),
-        delta: Delta::default(),
-        finish_reason: None,
-        usage: None,
-    })
+    if chunks.is_empty() {
+        chunks.push(Ok(ChatChunk {
+            id: String::new(),
+            delta: Delta::default(),
+            finish_reason: None,
+            usage: None,
+        }));
+    }
+    chunks
 }
 
 // ---------------------------------------------------------------------------

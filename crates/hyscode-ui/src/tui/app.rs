@@ -115,6 +115,16 @@ pub enum Modal {
     ModelSelection,
     ConfigPanel,
     AgentSelection,
+    ProviderConfig,
+}
+
+/// Ações disponíveis no painel de configuração do provedor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProviderConfigAction {
+    ChangeApiKey,
+    LoginOAuth,
+    Logout,
+    TestConnection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +132,7 @@ pub enum SlashCommand {
     Provider,
     Models,
     Config,
+    ConfigProvider,
     Agent,
     Help,
     Clear,
@@ -140,6 +151,7 @@ impl SlashCommand {
             "/provider" => SlashCommand::Provider,
             "/models" => SlashCommand::Models,
             "/config" => SlashCommand::Config,
+            "/config-provider" => SlashCommand::ConfigProvider,
             "/agent" => SlashCommand::Agent,
             "/help" => SlashCommand::Help,
             "/clear" => SlashCommand::Clear,
@@ -153,6 +165,7 @@ impl SlashCommand {
             SlashCommand::Provider => "Seleciona o provedor de LLM",
             SlashCommand::Models => "Seleciona o modelo e nível de pensamento",
             SlashCommand::Config => "Abre painel de configurações",
+            SlashCommand::ConfigProvider => "Gerencia credenciais do provedor",
             SlashCommand::Agent => "Muda o modo do agente (Plan/Build/Review)",
             SlashCommand::Help => "Mostra ajuda de comandos",
             SlashCommand::Clear => "Limpa o histórico de chat",
@@ -168,6 +181,8 @@ pub struct ChatApp {
     pub input: String,
     pub input_cursor: usize,
     pub scroll: usize,
+    /// Se true, scrolla automaticamente para o bottom quando o conteúdo muda.
+    pub auto_scroll: bool,
     pub status: AppStatus,
     pub current_provider: String,
     pub current_model: String,
@@ -193,6 +208,8 @@ pub struct ChatApp {
     pub command_palette_selection: Option<usize>,
     /// Quando Some, indica que o provedor mudou e os modelos devem ser recarregados.
     pub needs_provider_refresh: Option<String>,
+    /// Ação de configuração do provedor pendente (trocar key, login, logout, testar).
+    pub pending_provider_config: Option<(String, ProviderConfigAction)>,
 }
 
 /// System prompt base aplicado a TODOS os modos de agente.
@@ -338,6 +355,7 @@ impl ChatApp {
             input: String::new(),
             input_cursor: 0,
             scroll: 0,
+            auto_scroll: true,
             status: AppStatus::Idle,
             current_provider: provider,
             current_model: model,
@@ -357,6 +375,7 @@ impl ChatApp {
             animation_frame: 0,
             command_palette_selection: None,
             needs_provider_refresh: None,
+            pending_provider_config: None,
         };
         app.add_system_message(
             "Bem-vindo ao Hyscode! [TAB] alterna modo  |  /help para comandos  |  Modo atual: PLAN",
@@ -373,6 +392,7 @@ impl ChatApp {
             ("/provider", "Seleciona o provedor de LLM"),
             ("/models", "Seleciona o modelo e nível de pensamento"),
             ("/config", "Abre painel de configurações"),
+            ("/config-provider", "Gerencia credenciais do provedor"),
             ("/agent", "Muda o modo do agente (Plan/Build/Review)"),
             ("/clear", "Limpa o histórico de chat"),
             ("/help", "Mostra ajuda de comandos"),
@@ -485,14 +505,17 @@ impl ChatApp {
     }
 
     pub fn scroll_up(&mut self, amount: usize) {
+        self.auto_scroll = false;
         self.scroll = self.scroll.saturating_add(amount);
     }
 
     pub fn scroll_down(&mut self, amount: usize) {
+        self.auto_scroll = false;
         self.scroll = self.scroll.saturating_sub(amount);
     }
 
     pub fn scroll_to_bottom(&mut self) {
+        self.auto_scroll = true;
         self.scroll = 0;
     }
 
@@ -501,12 +524,17 @@ impl ChatApp {
             return;
         }
         self.input.insert(self.input_cursor, c);
-        self.input_cursor += 1;
+        self.input_cursor += c.len_utf8();
     }
 
     pub fn backspace(&mut self) {
         if self.input_cursor > 0 {
-            self.input_cursor -= 1;
+            // Encontra o início do caractere UTF-8 anterior ao cursor
+            let mut prev = self.input_cursor.saturating_sub(1);
+            while prev > 0 && !self.input.is_char_boundary(prev) {
+                prev -= 1;
+            }
+            self.input_cursor = prev;
             self.input.remove(self.input_cursor);
         }
     }
@@ -518,12 +546,20 @@ impl ChatApp {
     }
 
     pub fn move_cursor_left(&mut self) {
-        self.input_cursor = self.input_cursor.saturating_sub(1);
+        if self.input_cursor > 0 {
+            let mut prev = self.input_cursor.saturating_sub(1);
+            while prev > 0 && !self.input.is_char_boundary(prev) {
+                prev -= 1;
+            }
+            self.input_cursor = prev;
+        }
     }
 
     pub fn move_cursor_right(&mut self) {
         if self.input_cursor < self.input.len() {
-            self.input_cursor += 1;
+            // Pula o caractere UTF-8 atual
+            let ch = self.input[self.input_cursor..].chars().next().unwrap_or(' ');
+            self.input_cursor += ch.len_utf8();
         }
     }
 
@@ -591,5 +627,24 @@ impl ChatApp {
             "gemini",
             "opencode-go",
         ]
+    }
+
+    /// Retorna as ações de configuração disponíveis para o provedor atual.
+    pub fn provider_config_actions(&self) -> Vec<ProviderConfigAction> {
+        let mut actions = vec![
+            ProviderConfigAction::TestConnection,
+            ProviderConfigAction::ChangeApiKey,
+            ProviderConfigAction::Logout,
+        ];
+        if self.current_provider == "copilot" {
+            // Para Copilot, substitui ChangeApiKey por LoginOAuth (mas mantém ChangeApiKey como fallback)
+            actions = vec![
+                ProviderConfigAction::TestConnection,
+                ProviderConfigAction::LoginOAuth,
+                ProviderConfigAction::ChangeApiKey,
+                ProviderConfigAction::Logout,
+            ];
+        }
+        actions
     }
 }

@@ -12,7 +12,7 @@ use hyscode_tools::ToolRegistry;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-use super::providers::build_registry;
+use super::providers::{build_registry, ensure_provider_configured};
 
 pub async fn run(
     task: String,
@@ -21,10 +21,11 @@ pub async fn run(
     provider: Option<String>,
     model: Option<String>,
 ) -> anyhow::Result<()> {
-    let config = load_config().unwrap_or_default();
+    let mut config = load_config().unwrap_or_default();
     let provider_name = provider.unwrap_or_else(|| config.profile.default_provider.clone());
     let model = model.unwrap_or_else(|| config.profile.default_model.clone());
 
+    ensure_provider_configured(&provider_name, &mut config).await?;
     let registry = build_registry(&config).await?;
     let provider = registry
         .get(&provider_name)

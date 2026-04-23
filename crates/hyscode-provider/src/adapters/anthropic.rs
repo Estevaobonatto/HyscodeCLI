@@ -155,14 +155,15 @@ impl Provider for AnthropicAdapter {
         }
 
         let byte_stream = response.bytes_stream();
-        let stream = byte_stream.filter_map(|result| async move {
-            match result {
-                Ok(bytes) => Some(parse_anthropic_sse_bytes(bytes)),
-                Err(e) => Some(Err(ProviderError::Http {
+        let stream = byte_stream.flat_map(|result| {
+            let items: Vec<Result<ChatChunk, ProviderError>> = match result {
+                Ok(bytes) => parse_anthropic_sse_bytes(bytes),
+                Err(e) => vec![Err(ProviderError::Http {
                     status: 0,
                     message: e.to_string(),
-                })),
-            }
+                })],
+            };
+            futures::stream::iter(items)
         });
 
         Ok(Box::pin(stream))
@@ -332,10 +333,11 @@ fn build_anthropic_request(req: ChatRequest) -> AnthropicMessagesRequest {
     }
 }
 
-fn parse_anthropic_sse_bytes(bytes: Bytes) -> Result<ChatChunk, ProviderError> {
+fn parse_anthropic_sse_bytes(bytes: Bytes) -> Vec<Result<ChatChunk, ProviderError>> {
     let text = String::from_utf8_lossy(&bytes);
     let mut current_event = String::new();
     let mut current_data = String::new();
+    let mut chunks = Vec::new();
 
     for line in text.lines() {
         if line.starts_with("event: ") {
@@ -343,28 +345,33 @@ fn parse_anthropic_sse_bytes(bytes: Bytes) -> Result<ChatChunk, ProviderError> {
         } else if line.starts_with("data: ") {
             current_data = line.strip_prefix("data: ").unwrap_or("").to_owned();
         } else if line.is_empty() && !current_event.is_empty() {
-            // Processa o evento completo
-            return parse_anthropic_event(&current_event, &current_data);
+            chunks.push(parse_anthropic_event(&current_event, &current_data));
+            current_event.clear();
+            current_data.clear();
         }
     }
 
-    // Se não houve evento vazio no final, processa o último acumulado
     if !current_event.is_empty() {
-        return parse_anthropic_event(&current_event, &current_data);
+        chunks.push(parse_anthropic_event(&current_event, &current_data));
     }
 
-    // Linha simples sem event: (formato simplificado)
-    if let Some(data) = text.lines().find(|l| l.starts_with("data: ")) {
-        let data = data.strip_prefix("data: ").unwrap_or(data);
-        return parse_anthropic_data_line(data);
+    if chunks.is_empty() {
+        if let Some(data) = text.lines().find(|l| l.starts_with("data: ")) {
+            let data = data.strip_prefix("data: ").unwrap_or(data);
+            chunks.push(parse_anthropic_data_line(data));
+        }
     }
 
-    Ok(ChatChunk {
-        id: String::new(),
-        delta: Delta::default(),
-        finish_reason: None,
-        usage: None,
-    })
+    if chunks.is_empty() {
+        chunks.push(Ok(ChatChunk {
+            id: String::new(),
+            delta: Delta::default(),
+            finish_reason: None,
+            usage: None,
+        }));
+    }
+
+    chunks
 }
 
 fn parse_anthropic_event(event: &str, data: &str) -> Result<ChatChunk, ProviderError> {

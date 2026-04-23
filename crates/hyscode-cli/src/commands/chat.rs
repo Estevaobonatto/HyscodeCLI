@@ -12,7 +12,9 @@ use hyscode_engine::{
     context::ContextBuilder, conversation::ConversationManager, maybe_summarize,
     token::TokenEstimator,
 };
-use hyscode_ui::tui::app::{build_system_prompt_for_mode, AppStatus, ChatApp, MessageRole};
+use hyscode_ui::tui::app::{
+    build_system_prompt_for_mode, AppStatus, ChatApp, MessageRole, ProviderConfigAction,
+};
 use hyscode_ui::tui::events::{handle_event, read_event};
 use hyscode_ui::tui::theme::Theme;
 use hyscode_ui::tui::ui::draw;
@@ -27,7 +29,10 @@ use ratatui::{
 };
 use std::time::Duration;
 
-use super::providers::build_registry;
+use super::providers::{
+    build_registry, change_provider_api_key, ensure_provider_configured, logout_provider,
+    test_provider_connection,
+};
 
 /// Retorna o caminho do banco de dados de conversas.
 fn conversations_db_path() -> std::path::PathBuf {
@@ -49,7 +54,7 @@ pub async fn run(
     provider_override: Option<String>,
     model_override: Option<String>,
 ) -> anyhow::Result<()> {
-    let config = load_config().unwrap_or_default();
+    let mut config = load_config().unwrap_or_default();
 
     let provider_name = provider_override
         .or_else(|| std::env::var("HYSCODE_PROVIDER").ok())
@@ -59,6 +64,7 @@ pub async fn run(
         .or_else(|| std::env::var("HYSCODE_MODEL").ok())
         .unwrap_or_else(|| config.profile.default_model.clone());
 
+    ensure_provider_configured(&provider_name, &mut config).await?;
     let registry = build_registry(&config).await?;
 
     let provider = registry
@@ -150,7 +156,7 @@ pub async fn run(
         &conv_manager,
         &conv_id,
         &ctx_builder,
-        &config,
+        &mut config,
     )
     .await;
 
@@ -248,12 +254,72 @@ async fn run_chat_loop<B: Backend>(
     conv_manager: &ConversationManager,
     conv_id: &str,
     ctx_builder: &ContextBuilder,
-    config: &Config,
+    config: &mut Config,
 ) -> anyhow::Result<()> {
     let mut active_provider = provider.clone();
 
     loop {
         terminal.draw(|f| draw(f, app))?;
+
+        // Se há ação de configuração do provedor pendente, executa fora do TUI
+        if let Some((provider_name, action)) = app.pending_provider_config.take() {
+            // Sai do alternate screen e raw mode para permitir dialoguer
+            disable_raw_mode()?;
+            execute!(std::io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
+
+            let mut should_refresh_provider = false;
+            let result_msg = match action {
+                ProviderConfigAction::ChangeApiKey => {
+                    should_refresh_provider = true;
+                    match change_provider_api_key(&provider_name, config).await {
+                        Ok(msg) => msg,
+                        Err(e) => format!("❌ Erro ao alterar API key: {}", e),
+                    }
+                }
+                ProviderConfigAction::LoginOAuth => {
+                    should_refresh_provider = true;
+                    if provider_name == "copilot" {
+                        match change_provider_api_key(&provider_name, config).await {
+                            Ok(msg) => msg,
+                            Err(e) => format!("❌ Erro no login OAuth: {}", e),
+                        }
+                    } else {
+                        "⚠️  Login OAuth só é suportado para 'copilot'.".to_owned()
+                    }
+                }
+                ProviderConfigAction::Logout => logout_provider(&provider_name),
+                ProviderConfigAction::TestConnection => {
+                    match test_provider_connection(&provider_name, config).await {
+                        Ok(msg) => msg,
+                        Err(e) => format!("❌ Erro ao testar conexão: {}", e),
+                    }
+                }
+            };
+
+            // Volta ao alternate screen e raw mode
+            execute!(std::io::stdout(), EnterAlternateScreen, EnableMouseCapture)?;
+            enable_raw_mode()?;
+            terminal.resize(terminal.size()?)?;
+
+            // Reconstrói o provider em memória se a credencial mudou
+            if should_refresh_provider {
+                match build_registry(config).await {
+                    Ok(registry) => {
+                        if let Some(new_provider) = registry.get(&provider_name) {
+                            active_provider = new_provider;
+                        }
+                    }
+                    Err(e) => {
+                        app.add_system_message(format!(
+                            "⚠️  Erro ao recarregar provider: {}",
+                            e
+                        ));
+                    }
+                }
+            }
+
+            app.add_system_message(result_msg);
+        }
 
         // Se o provedor mudou, recarrega os modelos do novo provider
         if let Some(new_provider_name) = app.needs_provider_refresh.take() {
@@ -316,12 +382,13 @@ async fn run_chat_loop<B: Backend>(
 }
 
 async fn refresh_models(
-    config: &Config,
+    config: &mut Config,
     provider_name: &str,
 ) -> anyhow::Result<(
     Arc<dyn Provider>,
     Vec<hyscode_core::models::provider::ModelInfo>,
 )> {
+    ensure_provider_configured(provider_name, config).await?;
     let registry = build_registry(config).await?;
     let provider = registry
         .get(provider_name)

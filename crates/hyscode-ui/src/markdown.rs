@@ -124,12 +124,13 @@ pub fn render_markdown_lines(input: &str, base_fg: Color, accent: Color) -> Vec<
             }
             Event::End(TagEnd::CodeBlock) => {
                 in_code_block = false;
-                let highlighted = highlight_code(&code_buffer, &code_lang);
-                for hl_line in highlighted.lines() {
+                // Na TUI não usamos escapes ANSI; renderizamos como texto plano
+                // com cor de fundo de código para evitar lixo de escape sequences.
+                for code_line in code_buffer.lines() {
                     lines.push(Line::from(vec![
                         Span::styled("  ".to_string(), Style::default()),
                         Span::styled(
-                            hl_line.to_string(),
+                            code_line.to_string(),
                             Style::default().fg(Color::Rgb(200, 200, 220)),
                         ),
                     ]));

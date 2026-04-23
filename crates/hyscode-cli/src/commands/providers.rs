@@ -3,9 +3,15 @@
 //! Elimina duplicação entre chat.rs, agent.rs e commit.rs.
 //! Usa os adapters corretos para cada provedor.
 
+use std::io::IsTerminal;
 use std::sync::Arc;
 
-use hyscode_config::{env::api_key_from_env, file::Config, vault::get_api_key};
+use hyscode_config::{
+    env::api_key_from_env,
+    file::{ApiKeySource, Config, ProviderConfig},
+    save_config,
+    vault::{delete_api_key, get_api_key, store_api_key},
+};
 use hyscode_provider::{
     adapters::{
         anthropic::{AnthropicAdapter, AnthropicConfig},
@@ -188,4 +194,161 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
     }
 
     Ok(registry)
+}
+
+fn default_model_for_provider(provider: &str) -> String {
+    match provider {
+        "openai" => "gpt-5.4".to_owned(),
+        "anthropic" => "claude-sonnet-4-6".to_owned(),
+        "openrouter" => "openai/gpt-5.4".to_owned(),
+        "copilot" => "gpt-4o".to_owned(),
+        "zai" => "glm-5.1".to_owned(),
+        "hyscode" => "hyscode-smart".to_owned(),
+        "opencode-go" => "opencode-go/kimi-k2.6".to_owned(),
+        _ => "default".to_owned(),
+    }
+}
+
+/// Verifica se o provedor selecionado possui credenciais configuradas.
+/// Se não tiver e o terminal for interativo, solicita a API key ou OAuth ao usuário,
+/// salvando a credencial no vault e atualizando o `config.toml` quando necessário.
+pub async fn ensure_provider_configured(
+    provider_name: &str,
+    config: &mut Config,
+) -> anyhow::Result<()> {
+    if resolve_api_key(provider_name, config).is_some() {
+        return Ok(());
+    }
+
+    if !std::io::stdin().is_terminal() {
+        anyhow::bail!(
+            "Provedor '{}' não possui API key ou OAuth configurado. \
+             Use `hyscode provider add {}` ou defina a variável de ambiente.",
+            provider_name,
+            provider_name
+        );
+    }
+
+    println!("⚠️  Provedor '{}' não está configurado.", provider_name);
+
+    let key = if provider_name == "copilot" {
+        println!("O Copilot requer autenticação via GitHub OAuth.");
+        let do_login = dialoguer::Confirm::new()
+            .with_prompt("Autenticar via GitHub agora?")
+            .default(true)
+            .interact()?;
+        if do_login {
+            let token = crate::oauth::authenticate_copilot().await?;
+            store_api_key(provider_name, &token)?;
+            String::new() // já salvo no vault
+        } else {
+            dialoguer::Password::new()
+                .with_prompt("Cole o token do GitHub Copilot")
+                .interact()?
+        }
+    } else {
+        dialoguer::Password::new()
+            .with_prompt(format!(
+                "API key para {} (armazenada criptografada localmente)",
+                provider_name
+            ))
+            .interact()?
+    };
+
+    if !key.is_empty() {
+        store_api_key(provider_name, &key)?;
+    }
+
+    // Garante que existe uma entrada no config.toml para o provedor
+    if !config.providers.contains_key(provider_name) {
+        config.providers.insert(
+            provider_name.to_owned(),
+            ProviderConfig {
+                api_key_source: ApiKeySource::Keyring,
+                env_var: None,
+                base_url: None,
+                default_model: default_model_for_provider(provider_name),
+                timeout_secs: 120,
+                max_retries: 3,
+            },
+        );
+        save_config(config)?;
+    }
+
+    Ok(())
+}
+
+/// Solicita uma nova API key ao usuário e a armazena no vault.
+/// Se o provedor não existir no config, cria uma entrada padrão.
+pub async fn change_provider_api_key(
+    provider_name: &str,
+    config: &mut Config,
+) -> anyhow::Result<String> {
+    let key = if provider_name == "copilot" {
+        println!("O Copilot requer autenticação via GitHub OAuth.");
+        let do_login = dialoguer::Confirm::new()
+            .with_prompt("Autenticar via GitHub agora?")
+            .default(true)
+            .interact()?;
+        if do_login {
+            let token = crate::oauth::authenticate_copilot().await?;
+            store_api_key(provider_name, &token)?;
+            String::new() // já salvo no vault
+        } else {
+            dialoguer::Password::new()
+                .with_prompt("Cole o token do GitHub Copilot")
+                .interact()?
+        }
+    } else {
+        dialoguer::Password::new()
+            .with_prompt(format!(
+                "Nova API key para {} (armazenada criptografada localmente)",
+                provider_name
+            ))
+            .interact()?
+    };
+
+    if !key.is_empty() {
+        store_api_key(provider_name, &key)?;
+    }
+
+    if !config.providers.contains_key(provider_name) {
+        config.providers.insert(
+            provider_name.to_owned(),
+            ProviderConfig {
+                api_key_source: ApiKeySource::Keyring,
+                env_var: None,
+                base_url: None,
+                default_model: default_model_for_provider(provider_name),
+                timeout_secs: 120,
+                max_retries: 3,
+            },
+        );
+        save_config(config)?;
+    }
+
+    Ok("✅ API key atualizada com sucesso.".to_owned())
+}
+
+/// Remove a credencial do provedor do vault local.
+pub fn logout_provider(provider_name: &str) -> String {
+    match delete_api_key(provider_name) {
+        Ok(()) => format!("🚪 Credenciais de '{}' removidas do vault.", provider_name),
+        Err(e) => format!("⚠️  Erro ao remover credenciais: {}", e),
+    }
+}
+
+/// Testa a conectividade com o provedor usando as credenciais atuais.
+pub async fn test_provider_connection(
+    provider_name: &str,
+    config: &Config,
+) -> anyhow::Result<String> {
+    let registry = build_registry(config).await?;
+    let provider = registry
+        .get(provider_name)
+        .ok_or_else(|| anyhow::anyhow!("Provedor '{}' não encontrado no registry.", provider_name))?;
+    match provider.validate().await {
+        Ok(()) => Ok(format!("✅ Conexão com '{}' bem-sucedida!", provider_name)),
+        Err(e) => Ok(format!("❌ Falha ao conectar com '{}': {}", provider_name, e)),
+    }
 }

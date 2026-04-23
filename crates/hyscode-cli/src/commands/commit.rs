@@ -3,7 +3,7 @@
 use hyscode_config::load_config;
 use hyscode_core::models::{message::Message, request::ChatRequest};
 
-use super::providers::build_registry;
+use super::providers::{build_registry, ensure_provider_configured};
 
 pub async fn run(all: bool) -> anyhow::Result<()> {
     // 1. Stage arquivos se --all
@@ -38,10 +38,11 @@ pub async fn run(all: bool) -> anyhow::Result<()> {
     println!("{}", String::from_utf8_lossy(&stat_output.stdout));
 
     // 3. Gera mensagem com LLM
-    let config = load_config().unwrap_or_default();
+    let mut config = load_config().unwrap_or_default();
     let provider_name = config.profile.default_provider.clone();
     let model = config.profile.default_model.clone();
 
+    ensure_provider_configured(&provider_name, &mut config).await?;
     let registry = build_registry(&config).await?;
     let provider = registry
         .get(&provider_name)

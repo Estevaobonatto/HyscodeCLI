@@ -167,6 +167,7 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
                 Some(Modal::ProviderSelection) => ChatApp::available_providers().len(),
                 Some(Modal::ModelSelection) => app.available_models.len(),
                 Some(Modal::AgentSelection) => AgentMode::all().len(),
+                Some(Modal::ProviderConfig) => app.provider_config_actions().len(),
                 _ => 0,
             };
             app.modal_scroll_down(max);
@@ -197,6 +198,15 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
                         app.close_modal();
                     }
                     Modal::ConfigPanel => {
+                        app.close_modal();
+                    }
+                    Modal::ProviderConfig => {
+                        let actions = app.provider_config_actions();
+                        if let Some(action) = actions.get(app.popup_selection) {
+                            let action = action.clone();
+                            app.pending_provider_config =
+                                Some((app.current_provider.clone(), action));
+                        }
                         app.close_modal();
                     }
                     Modal::AgentSelection => {
@@ -240,6 +250,9 @@ fn handle_slash_command(app: &mut ChatApp, cmd: SlashCommand) {
         }
         SlashCommand::Config => {
             app.open_modal(Modal::ConfigPanel);
+        }
+        SlashCommand::ConfigProvider => {
+            app.open_modal(Modal::ProviderConfig);
         }
         SlashCommand::Agent => {
             app.open_modal(Modal::AgentSelection);

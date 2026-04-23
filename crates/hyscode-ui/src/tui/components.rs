@@ -9,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-use super::app::{AppStatus, ChatApp, ChatMessage, MessageBlock, MessageRole, Modal};
+use super::app::{AppStatus, ChatApp, ChatMessage, MessageBlock, MessageRole, Modal, ProviderConfigAction};
 use super::theme::Theme;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -159,10 +159,22 @@ pub fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     // Espaço extra no final para não colar no input
     all_lines.push(Line::from(""));
 
+    let total_lines = all_lines.len();
+    let visible_lines = inner.height as usize;
+    // Heurística: com Wrap ativo, cada Line pode ocupar até ~3 linhas visuais
+    // dependendo do conteúdo. Multiplicamos por um fator de segurança.
+    let estimated_visual_lines = total_lines.saturating_mul(3);
+    let max_scroll = estimated_visual_lines.saturating_sub(visible_lines);
+    let scroll_y = if app.auto_scroll {
+        max_scroll
+    } else {
+        app.scroll.min(max_scroll)
+    };
+
     let text = Text::from(all_lines);
     let paragraph = Paragraph::new(text)
         .wrap(Wrap { trim: false })
-        .scroll((app.scroll as u16, 0));
+        .scroll((scroll_y as u16, 0));
 
     frame.render_widget(paragraph, inner);
 
@@ -173,14 +185,8 @@ pub fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .end_symbol(None)
         .thumb_symbol("│");
 
-    let mut state = ScrollbarState::new(
-        app.messages
-            .iter()
-            .map(|m| m.blocks.len() + 2)
-            .sum::<usize>()
-            .saturating_sub(inner.height as usize),
-    );
-    state = state.position(app.scroll);
+    let mut state = ScrollbarState::new(max_scroll);
+    state = state.position(scroll_y);
     frame.render_stateful_widget(scrollbar, inner, &mut state);
 }
 
@@ -201,19 +207,31 @@ fn render_message(msg: &ChatMessage, theme: Theme, frame: u64) -> Vec<Line<'_>> 
     lines.push(header);
 
     // Conteúdo de cada bloco
+    // Durante streaming, renderiza como texto puro para evitar
+    // artefatos do parser markdown com tags incompletas.
+    let is_streaming = msg.is_streaming;
     for block in &msg.blocks {
         match block {
             MessageBlock::Text(text) => {
-                let md_lines = crate::markdown::render_markdown_lines(text, theme.fg(), accent);
-                for md_line in md_lines {
-                    let mut spans = vec![Span::styled("│ ", Style::default().fg(accent))];
-                    spans.extend(
-                        md_line
-                            .spans
-                            .into_iter()
-                            .map(|s| Span::styled(s.content, s.style)),
-                    );
-                    lines.push(Line::from(spans));
+                if is_streaming {
+                    for line in text.lines() {
+                        lines.push(Line::from(vec![
+                            Span::styled("│ ", Style::default().fg(accent)),
+                            Span::styled(line.to_string(), Style::default().fg(theme.fg())),
+                        ]));
+                    }
+                } else {
+                    let md_lines = crate::markdown::render_markdown_lines(text, theme.fg(), accent);
+                    for md_line in md_lines {
+                        let mut spans = vec![Span::styled("│ ", Style::default().fg(accent))];
+                        spans.extend(
+                            md_line
+                                .spans
+                                .into_iter()
+                                .map(|s| Span::styled(s.content, s.style)),
+                        );
+                        lines.push(Line::from(spans));
+                    }
                 }
             }
             MessageBlock::Code { lang, code } => {
@@ -479,17 +497,11 @@ pub fn draw_input_bar(frame: &mut Frame, app: &ChatApp, area: Rect) {
     let input = Paragraph::new(input_line).wrap(Wrap { trim: false });
     frame.render_widget(input, input_area);
 
-    // Cursor posicionado corretamente
-    if !app.input.is_empty() {
-        let cursor_x = input_area.x + 2 + app.input_cursor as u16;
-        let cursor_y = input_area.y;
-        frame.set_cursor(cursor_x, cursor_y);
-    } else {
-        // Cursor piscante no placeholder
-        let cursor_x = input_area.x + 2;
-        let cursor_y = input_area.y;
-        frame.set_cursor(cursor_x, cursor_y);
-    }
+    // Cursor posicionado corretamente (considera largura de exibição UTF-8)
+    let cursor_display_width = unicode_width::UnicodeWidthStr::width(&app.input[..app.input_cursor.min(app.input.len())]);
+    let cursor_x = input_area.x + 2 + cursor_display_width as u16;
+    let cursor_y = input_area.y;
+    frame.set_cursor(cursor_x, cursor_y);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -502,6 +514,7 @@ pub fn draw_modal(frame: &mut Frame, app: &mut ChatApp, modal: Modal, area: Rect
         Modal::ModelSelection => draw_model_selection(frame, app, area),
         Modal::ConfigPanel => draw_config_panel(frame, app, area),
         Modal::AgentSelection => draw_agent_selection(frame, app, area),
+        Modal::ProviderConfig => draw_provider_config(frame, app, area),
     }
 }
 
@@ -826,6 +839,90 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     frame.render_widget(info, info_area);
 }
 
+fn draw_provider_config(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
+    let area = centered_rect(60, 50, area);
+    frame.render_widget(Clear, area);
+
+    let theme = app.theme;
+    let actions = app.provider_config_actions();
+    let provider = app.current_provider.clone();
+
+    let items: Vec<ListItem> = actions
+        .iter()
+        .enumerate()
+        .map(|(i, action)| {
+            let (label, desc) = match action {
+                ProviderConfigAction::ChangeApiKey => {
+                    ("🔑  Alterar API key", "Atualiza a chave armazenada no vault")
+                }
+                ProviderConfigAction::LoginOAuth => {
+                    ("🔐  Login OAuth", "Autentica via GitHub Device Flow")
+                }
+                ProviderConfigAction::Logout => {
+                    ("🚪  Deslogar", "Remove a credencial do vault local")
+                }
+                ProviderConfigAction::TestConnection => {
+                    ("🧪  Testar conexão", "Valida credenciais com o provedor")
+                }
+            };
+            let is_selected = i == app.popup_selection;
+            let bg = if is_selected {
+                theme.accent()
+            } else {
+                Color::Reset
+            };
+            let fg = if is_selected {
+                Color::Rgb(10, 10, 14)
+            } else {
+                theme.fg()
+            };
+            let desc_fg = if is_selected {
+                Color::Rgb(30, 30, 40)
+            } else {
+                theme.fg_muted()
+            };
+
+            let line = Line::from(vec![
+                Span::styled(
+                    format!(" {:<22}", label),
+                    Style::default().fg(fg).bg(bg),
+                ),
+                Span::styled(
+                    format!("  {}", desc),
+                    Style::default().fg(desc_fg).bg(bg),
+                ),
+            ]);
+            ListItem::new(line)
+        })
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border()))
+                .title(Span::styled(
+                    format!(" Configurar Provedor: {} ", provider),
+                    Style::default()
+                        .fg(theme.accent())
+                        .add_modifier(Modifier::BOLD),
+                )),
+        )
+        .highlight_symbol("▶ ");
+
+    frame.render_widget(list, area);
+
+    let info_area = Rect {
+        x: area.x + 2,
+        y: area.y + area.height - 2,
+        width: area.width - 4,
+        height: 1,
+    };
+    let info = Paragraph::new("Enter: executar ação | Esc: fechar")
+        .style(Style::default().fg(theme.fg_muted()));
+    frame.render_widget(info, info_area);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Ajuda
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -839,6 +936,7 @@ pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
         ("/provider", "Seleciona o provedor de LLM"),
         ("/models", "Seleciona o modelo e nível de pensamento"),
         ("/config", "Abre painel de configurações"),
+        ("/config-provider", "Gerencia credenciais do provedor"),
         ("/agent", "Muda o modo do agente (Plan/Build/Review)"),
         ("/clear", "Limpa o histórico de chat"),
         ("/help", "Mostra esta ajuda"),

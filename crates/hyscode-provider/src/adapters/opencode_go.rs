@@ -57,19 +57,25 @@ pub struct OpenCodeGoAdapter {
     inner_messages: OpenCodeGoMessagesAdapter,
 }
 
+fn strip_provider_prefix(model: &str) -> String {
+    model.strip_prefix("opencode-go/").unwrap_or(model).to_owned()
+}
+
 impl OpenCodeGoAdapter {
     pub fn new(config: OpenCodeGoConfig) -> Self {
+        let clean_default = strip_provider_prefix(&config.default_model);
+
         let openai_config = OpenAIConfig {
             api_key: config.api_key.clone(),
             base_url: OPENCODE_GO_BASE_URL.to_owned(),
-            default_model: config.default_model.clone(),
+            default_model: clean_default.clone(),
             timeout_secs: config.timeout_secs,
             max_retries: config.max_retries,
         };
 
         let messages_config = OpenCodeGoMessagesConfig {
             api_key: config.api_key,
-            default_model: config.default_model,
+            default_model: clean_default,
             timeout_secs: config.timeout_secs,
             max_retries: config.max_retries,
         };
@@ -103,7 +109,8 @@ impl Provider for OpenCodeGoAdapter {
         }
     }
 
-    async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, ProviderError> {
+    async fn chat(&self, mut request: ChatRequest) -> Result<ChatResponse, ProviderError> {
+        request.model = strip_provider_prefix(&request.model);
         if Self::is_messages_model(&request.model) {
             self.inner_messages.chat(request).await
         } else {
@@ -113,8 +120,9 @@ impl Provider for OpenCodeGoAdapter {
 
     async fn chat_stream(
         &self,
-        request: ChatRequest,
+        mut request: ChatRequest,
     ) -> Result<BoxStream<'static, Result<ChatChunk, ProviderError>>, ProviderError> {
+        request.model = strip_provider_prefix(&request.model);
         if Self::is_messages_model(&request.model) {
             self.inner_messages.chat_stream(request).await
         } else {
@@ -487,14 +495,15 @@ impl Provider for OpenCodeGoMessagesAdapter {
         }
 
         let byte_stream = response.bytes_stream();
-        let stream = byte_stream.filter_map(|result| async move {
-            match result {
-                Ok(bytes) => Some(parse_messages_sse_bytes(bytes)),
-                Err(e) => Some(Err(ProviderError::Http {
+        let stream = byte_stream.flat_map(|result| {
+            let items: Vec<Result<ChatChunk, ProviderError>> = match result {
+                Ok(bytes) => parse_messages_sse_bytes(bytes),
+                Err(e) => vec![Err(ProviderError::Http {
                     status: 0,
                     message: e.to_string(),
-                })),
-            }
+                })],
+            };
+            futures::stream::iter(items)
         });
 
         Ok(Box::pin(stream))
@@ -697,10 +706,11 @@ impl MessagesResponse {
 // SSE parsing (Anthropic-compatible)
 // ---------------------------------------------------------------------------
 
-fn parse_messages_sse_bytes(bytes: Bytes) -> Result<ChatChunk, ProviderError> {
+fn parse_messages_sse_bytes(bytes: Bytes) -> Vec<Result<ChatChunk, ProviderError>> {
     let text = String::from_utf8_lossy(&bytes);
     let mut current_event = String::new();
     let mut current_data = String::new();
+    let mut chunks = Vec::new();
 
     for line in text.lines() {
         if line.starts_with("event: ") {
@@ -708,25 +718,33 @@ fn parse_messages_sse_bytes(bytes: Bytes) -> Result<ChatChunk, ProviderError> {
         } else if line.starts_with("data: ") {
             current_data = line.strip_prefix("data: ").unwrap_or("").to_owned();
         } else if line.is_empty() && !current_event.is_empty() {
-            return parse_messages_event(&current_event, &current_data);
+            chunks.push(parse_messages_event(&current_event, &current_data));
+            current_event.clear();
+            current_data.clear();
         }
     }
 
     if !current_event.is_empty() {
-        return parse_messages_event(&current_event, &current_data);
+        chunks.push(parse_messages_event(&current_event, &current_data));
     }
 
-    if let Some(data) = text.lines().find(|l| l.starts_with("data: ")) {
-        let data = data.strip_prefix("data: ").unwrap_or(data);
-        return parse_messages_data_line(data);
+    if chunks.is_empty() {
+        if let Some(data) = text.lines().find(|l| l.starts_with("data: ")) {
+            let data = data.strip_prefix("data: ").unwrap_or(data);
+            chunks.push(parse_messages_data_line(data));
+        }
     }
 
-    Ok(ChatChunk {
-        id: String::new(),
-        delta: Delta::default(),
-        finish_reason: None,
-        usage: None,
-    })
+    if chunks.is_empty() {
+        chunks.push(Ok(ChatChunk {
+            id: String::new(),
+            delta: Delta::default(),
+            finish_reason: None,
+            usage: None,
+        }));
+    }
+
+    chunks
 }
 
 fn parse_messages_event(event: &str, data: &str) -> Result<ChatChunk, ProviderError> {

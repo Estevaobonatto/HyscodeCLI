@@ -5,7 +5,7 @@ use futures::stream::StreamExt;
 use hyscode_config::load_config;
 use hyscode_core::models::{message::Message, request::ChatRequest};
 
-use super::providers::build_registry;
+use super::providers::{build_registry, ensure_provider_configured};
 
 /// Prompt de revisão de código injetado como system message.
 const REVIEW_SYSTEM_PROMPT: &str = r#"Você é um revisor de código experiente especializado em Rust e boas práticas de engenharia.
@@ -33,7 +33,7 @@ pub async fn run(
         return Ok(());
     }
 
-    let config = load_config().unwrap_or_default();
+    let mut config = load_config().unwrap_or_default();
 
     let provider_name = provider_override
         .or_else(|| std::env::var("HYSCODE_PROVIDER").ok())
@@ -43,6 +43,7 @@ pub async fn run(
         .or_else(|| std::env::var("HYSCODE_MODEL").ok())
         .unwrap_or_else(|| config.profile.default_model.clone());
 
+    ensure_provider_configured(&provider_name, &mut config).await?;
     let registry = build_registry(&config).await?;
     let provider = registry
         .get(&provider_name)
