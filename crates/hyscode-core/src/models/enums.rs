@@ -48,6 +48,63 @@ pub const DEFAULT_MAX_AGENT_ITERATIONS: u32 = 15;
 pub const DEFAULT_TIMEOUT_SECS: u64 = 120;
 pub const DEFAULT_MAX_RETRIES: u32 = 3;
 
+/// Modo de operação do agente.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentMode {
+    /// Modo Planejamento: apenas análise, leitura e criação de planos.
+    #[default]
+    Plan,
+    /// Modo Build: implementação e execução.
+    Build,
+    /// Modo Review: análise de código, debug, git, PRs e issues.
+    Review,
+}
+
+impl AgentMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Plan => "plan",
+            Self::Build => "build",
+            Self::Review => "review",
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::Plan => "PLAN",
+            Self::Build => "BUILD",
+            Self::Review => "REVIEW",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Plan => "Planejamento: análise e leitura apenas",
+            Self::Build => "Build: implementação e execução",
+            Self::Review => "Review: análise, debug e revisão",
+        }
+    }
+
+    pub fn all() -> &'static [AgentMode] {
+        &[AgentMode::Plan, AgentMode::Build, AgentMode::Review]
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            Self::Plan => Self::Build,
+            Self::Build => Self::Review,
+            Self::Review => Self::Plan,
+        }
+    }
+}
+
+impl std::fmt::Display for AgentMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// SSE — sentinel de fim de stream.
 pub const SSE_DONE_SENTINEL: &str = "[DONE]";
 pub const SSE_DATA_PREFIX: &str = "data: ";

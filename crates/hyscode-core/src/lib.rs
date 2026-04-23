@@ -11,6 +11,7 @@ pub mod traits;
 // Re-exports principais
 pub use error::ProviderError;
 pub use models::{
+    enums::AgentMode,
     message::{ContentPart, Message, MessageContent},
     provider::{ModelInfo, ProviderCapabilities},
     request::ChatRequest,

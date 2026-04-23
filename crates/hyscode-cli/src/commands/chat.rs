@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use futures::stream::StreamExt;
-use hyscode_config::{load_config, file::Config};
+use hyscode_config::{file::Config, load_config};
 use hyscode_core::{
     models::{message::Message, request::ChatRequest, usage::TokenUsage},
     traits::provider::Provider,
@@ -12,7 +12,7 @@ use hyscode_engine::{
     context::ContextBuilder, conversation::ConversationManager, maybe_summarize,
     token::TokenEstimator,
 };
-use hyscode_ui::tui::app::{AppStatus, ChatApp, MessageRole};
+use hyscode_ui::tui::app::{build_system_prompt_for_mode, AppStatus, ChatApp, MessageRole};
 use hyscode_ui::tui::events::{handle_event, read_event};
 use hyscode_ui::tui::theme::Theme;
 use hyscode_ui::tui::ui::draw;
@@ -67,10 +67,7 @@ pub async fn run(
         .context("Nenhum provedor configurado. Use `hyscode provider add`.")?;
 
     // Busca modelos disponíveis dinamicamente do provedor.
-    let available_models = provider
-        .list_models()
-        .await
-        .unwrap_or_default();
+    let available_models = provider.list_models().await.unwrap_or_default();
 
     // Inicializa o ConversationManager para persistência.
     let db_path = conversations_db_path();
@@ -111,8 +108,11 @@ pub async fn run(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Constrói system prompt com contexto de arquivos + ambiente
-    let system_prompt = ctx_builder.build_system_prompt().await.unwrap_or_default();
+    // Constrói contexto base (ambiente + arquivos extras + git diff) sem o system prompt principal
+    let base_context = ctx_builder
+        .build_context_without_prompt()
+        .await
+        .unwrap_or_default();
     let theme = Theme::from_str(&config.ui.theme).unwrap_or_default();
     let mut app = ChatApp::new(
         provider_name.clone(),
@@ -120,8 +120,8 @@ pub async fn run(
         available_models,
         theme,
     );
-    if !system_prompt.is_empty() {
-        app.set_system_prompt(system_prompt);
+    if !base_context.is_empty() {
+        app.environment_context = Some(base_context);
     }
 
     // Se há mensagem inicial, processa
@@ -178,12 +178,19 @@ async fn run_non_interactive(
     let (clean_text, file_ctx) = ctx_builder.resolve_at_mentions(&text).await;
 
     let mut messages = Vec::new();
-    let system_prompt = ctx_builder.build_system_prompt().await.unwrap_or_default();
-    if !system_prompt.is_empty() {
-        messages.push(Message::System {
-            content: system_prompt,
-        });
-    }
+    let mode_prompt = build_system_prompt_for_mode(hyscode_core::models::enums::AgentMode::Build);
+    let base_context = ctx_builder
+        .build_context_without_prompt()
+        .await
+        .unwrap_or_default();
+    let system_content = if base_context.is_empty() {
+        mode_prompt
+    } else {
+        format!("{}\n\n{}", mode_prompt, base_context)
+    };
+    messages.push(Message::System {
+        content: system_content,
+    });
     if let Some(ctx) = file_ctx {
         messages.push(Message::System { content: ctx });
     }
@@ -314,7 +321,10 @@ async fn run_chat_loop<B: Backend>(
 async fn refresh_models(
     config: &Config,
     provider_name: &str,
-) -> anyhow::Result<(Arc<dyn Provider>, Vec<hyscode_core::models::provider::ModelInfo>)> {
+) -> anyhow::Result<(
+    Arc<dyn Provider>,
+    Vec<hyscode_core::models::provider::ModelInfo>,
+)> {
     let registry = build_registry(config).await?;
     let provider = registry
         .get(provider_name)
@@ -443,16 +453,22 @@ fn build_messages(app: &ChatApp) -> Vec<Message> {
 
     let mut msgs = Vec::new();
 
-    // System prompt definido pelo ContextBuilder (via app.system_prompt)
-    if let Some(ref sp) = app.system_prompt {
-        msgs.push(Message::System {
-            content: sp.clone(),
-        });
+    // System prompt do modo ativo (Plan/Build/Review)
+    let mut system_content = if let Some(ref sp) = app.system_prompt {
+        sp.clone()
     } else {
-        msgs.push(Message::System {
-            content: "Você é um agente de codificação especializado em Rust.".to_owned(),
-        });
+        "Você é um agente de codificação especializado em Rust.".to_owned()
+    };
+
+    // Concatena contexto de ambiente (OS, shell, cwd, git, arquivos extras)
+    if let Some(ref env_ctx) = app.environment_context {
+        system_content.push_str("\n\n");
+        system_content.push_str(env_ctx);
     }
+
+    msgs.push(Message::System {
+        content: system_content,
+    });
 
     for msg in &app.messages {
         let m = match msg.role {

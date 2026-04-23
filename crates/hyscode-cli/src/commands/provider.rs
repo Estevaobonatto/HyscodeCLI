@@ -95,11 +95,21 @@ pub async fn run(action: crate::ProviderAction) -> anyhow::Result<()> {
                         .max_output_tokens
                         .map(|c| c.to_string())
                         .unwrap_or_else(|| "?".to_owned());
-                    let pricing = m.pricing.as_ref().map(|p| {
-                        let input = p.input.map(|v| format!("${}", v)).unwrap_or_else(|| "?".to_owned());
-                        let output = p.output.map(|v| format!("${}", v)).unwrap_or_else(|| "?".to_owned());
-                        format!("in:{}/1M out:{}/1M {}", input, output, p.currency)
-                    }).unwrap_or_else(|| "N/A".to_owned());
+                    let pricing = m
+                        .pricing
+                        .as_ref()
+                        .map(|p| {
+                            let input = p
+                                .input
+                                .map(|v| format!("${}", v))
+                                .unwrap_or_else(|| "?".to_owned());
+                            let output = p
+                                .output
+                                .map(|v| format!("${}", v))
+                                .unwrap_or_else(|| "?".to_owned());
+                            format!("in:{}/1M out:{}/1M {}", input, output, p.currency)
+                        })
+                        .unwrap_or_else(|| "N/A".to_owned());
                     println!(
                         "  {:40}  ctx: {:>8}  max_out: {:>8}  pricing: {}",
                         m.id, ctx, max_out, pricing

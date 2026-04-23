@@ -59,10 +59,14 @@ fn role_label(role: MessageRole) -> &'static str {
 pub fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
     let theme = app.theme;
 
-    // Layout: status + info | atalhos
+    // Layout: status + info | modo ativo | atalhos
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(20), Constraint::Length(28)])
+        .constraints([
+            Constraint::Min(20),
+            Constraint::Length(14),
+            Constraint::Length(30),
+        ])
         .split(area);
 
     let status_symbol = match app.status {
@@ -79,23 +83,19 @@ pub fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
         AppStatus::Error => theme.error(),
     };
 
-    let _left_text = format!(
-        " {}  ·  {}  ·  {}  ·  {}  ·  {} ",
-        status_symbol,
-        app.current_provider,
-        app.current_model,
-        app.current_agent,
-        app.thinking_level.as_str()
-    );
+    let mode_color = match app.agent_mode {
+        hyscode_core::models::enums::AgentMode::Plan => Color::Rgb(255, 184, 108), // laranja
+        hyscode_core::models::enums::AgentMode::Build => Color::Rgb(80, 250, 123), // verde neon
+        hyscode_core::models::enums::AgentMode::Review => Color::Rgb(139, 233, 253), // ciano
+    };
 
     let left = Paragraph::new(Line::from(vec![
         Span::styled(status_symbol.to_string(), Style::default().fg(status_color)),
         Span::styled(
             format!(
-                "  ·  {}  ·  {}  ·  {}  ·  {}",
+                "  ·  {}  ·  {}  ·  {}",
                 app.current_provider,
                 app.current_model,
-                app.current_agent,
                 app.thinking_level.as_str()
             ),
             Style::default().fg(theme.fg_secondary()),
@@ -103,14 +103,26 @@ pub fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
     ]));
     frame.render_widget(left, chunks[0]);
 
+    // Modo ativo destacado com cor e badge
+    let mode_badge = Paragraph::new(Line::from(vec![
+        Span::styled("[", Style::default().fg(theme.fg_muted())),
+        Span::styled(
+            app.mode_display(),
+            Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("]", Style::default().fg(theme.fg_muted())),
+    ]))
+    .alignment(Alignment::Center);
+    frame.render_widget(mode_badge, chunks[1]);
+
     let right = Paragraph::new(Line::from(vec![
         Span::styled("tab ", Style::default().fg(theme.fg_muted())),
-        Span::styled("agents  ", Style::default().fg(theme.fg_secondary())),
+        Span::styled("modo  ", Style::default().fg(theme.fg_secondary())),
         Span::styled("ctrl+p ", Style::default().fg(theme.fg_muted())),
-        Span::styled("commands", Style::default().fg(theme.fg_secondary())),
+        Span::styled("comandos", Style::default().fg(theme.fg_secondary())),
     ]))
     .alignment(Alignment::Right);
-    frame.render_widget(right, chunks[1]);
+    frame.render_widget(right, chunks[2]);
 
     // Linha divisória sutil
     let line_y = area.y + area.height.saturating_sub(1);
@@ -623,8 +635,12 @@ fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
 
         let (input_price, output_price) = match &m.pricing {
             Some(p) => (
-                p.input.map(|v| format!("${:.2}", v)).unwrap_or_else(|| "?".to_owned()),
-                p.output.map(|v| format!("${:.2}", v)).unwrap_or_else(|| "?".to_owned()),
+                p.input
+                    .map(|v| format!("${:.2}", v))
+                    .unwrap_or_else(|| "?".to_owned()),
+                p.output
+                    .map(|v| format!("${:.2}", v))
+                    .unwrap_or_else(|| "?".to_owned()),
             ),
             None => ("N/A".to_owned(), "N/A".to_owned()),
         };
@@ -691,18 +707,19 @@ fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     let config_text = format!(
         " Provedor atual:    {}\n\
          Modelo atual:      {}\n\
-         Agente atual:      {}\n\
+         Modo do agente:    {}\n\
          Nível pensamento:  {}\n\
          Tema:              {}\n\
          \n\
          Use /provider para mudar de provedor.\n\
          Use /models para mudar de modelo.\n\
-         Use /agent para mudar o perfil.\n\
+         Use /agent para mudar o modo (Plan/Build/Review).\n\
+         Pressione TAB para ciclar modos rapidamente.\n\
          \n\
          As configurações são salvas automaticamente.",
         app.current_provider,
         app.current_model,
-        app.current_agent,
+        app.mode_display(),
         app.thinking_level.as_str(),
         if app.theme == Theme::Light {
             "claro"
@@ -729,23 +746,56 @@ fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
 }
 
 fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let area = centered_rect(60, 40, area);
+    let area = centered_rect(60, 45, area);
     frame.render_widget(Clear, area);
 
     let theme = app.theme;
-    let agents = ["default", "code-review", "architecture", "debug"];
-    let items: Vec<ListItem> = agents
+    use hyscode_core::models::enums::AgentMode;
+    let modes = AgentMode::all();
+
+    let mode_color = |mode: &AgentMode| -> Color {
+        match mode {
+            AgentMode::Plan => Color::Rgb(255, 184, 108), // laranja
+            AgentMode::Build => Color::Rgb(80, 250, 123), // verde neon
+            AgentMode::Review => Color::Rgb(139, 233, 253), // ciano
+        }
+    };
+
+    let items: Vec<ListItem> = modes
         .iter()
         .enumerate()
-        .map(|(i, &a)| {
-            let style = if i == app.popup_selection {
-                Style::default()
-                    .bg(theme.accent())
-                    .fg(Color::Rgb(10, 10, 14))
+        .map(|(i, &mode)| {
+            let is_selected = i == app.popup_selection;
+            let bg = if is_selected {
+                theme.accent()
             } else {
-                Style::default().fg(theme.fg())
+                Color::Reset
             };
-            ListItem::new(Line::from(Span::styled(format!(" {} ", a), style)))
+            let fg = if is_selected {
+                Color::Rgb(10, 10, 14)
+            } else {
+                theme.fg()
+            };
+            let desc_fg = if is_selected {
+                Color::Rgb(30, 30, 40)
+            } else {
+                theme.fg_muted()
+            };
+
+            let line = Line::from(vec![
+                Span::styled(
+                    format!(" {:<10}", mode.display_name()),
+                    Style::default()
+                        .fg(if is_selected { fg } else { mode_color(&mode) })
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("  {}", mode.description()),
+                    Style::default().fg(desc_fg).bg(bg),
+                ),
+            ]);
+            ListItem::new(line)
         })
         .collect();
 
@@ -755,7 +805,7 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.border()))
                 .title(Span::styled(
-                    " Selecionar Agente ",
+                    " Selecionar Modo ",
                     Style::default()
                         .fg(theme.accent())
                         .add_modifier(Modifier::BOLD),
@@ -764,6 +814,16 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .highlight_symbol("▶ ");
 
     frame.render_widget(list, area);
+
+    let info_area = Rect {
+        x: area.x + 2,
+        y: area.y + area.height - 2,
+        width: area.width - 4,
+        height: 1,
+    };
+    let info = Paragraph::new("Enter: selecionar | Esc: fechar | Tab: ciclar rápido")
+        .style(Style::default().fg(theme.fg_muted()));
+    frame.render_widget(info, info_area);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -771,7 +831,7 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
-    let area = centered_rect(70, 70, area);
+    let area = centered_rect(75, 80, area);
     frame.render_widget(Clear, area);
 
     let theme = app.theme;
@@ -779,7 +839,7 @@ pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
         ("/provider", "Seleciona o provedor de LLM"),
         ("/models", "Seleciona o modelo e nível de pensamento"),
         ("/config", "Abre painel de configurações"),
-        ("/agent", "Muda o agente/perfil"),
+        ("/agent", "Muda o modo do agente (Plan/Build/Review)"),
         ("/clear", "Limpa o histórico de chat"),
         ("/help", "Mostra esta ajuda"),
         ("/exit", "Sai da aplicação"),
@@ -807,11 +867,54 @@ pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
 
     text.lines.push(Line::from(""));
     text.lines.push(Line::from(Span::styled(
+        "Modos do Agente (TAB para ciclar):",
+        Style::default()
+            .fg(theme.accent())
+            .add_modifier(Modifier::BOLD),
+    )));
+
+    use hyscode_core::models::enums::AgentMode;
+    let modes = vec![
+        (
+            AgentMode::Plan.display_name(),
+            AgentMode::Plan.description(),
+            Color::Rgb(255, 184, 108),
+        ),
+        (
+            AgentMode::Build.display_name(),
+            AgentMode::Build.description(),
+            Color::Rgb(80, 250, 123),
+        ),
+        (
+            AgentMode::Review.display_name(),
+            AgentMode::Review.description(),
+            Color::Rgb(139, 233, 253),
+        ),
+    ];
+    for (name, desc, color) in modes {
+        text.lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {:<8}", name),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(desc, Style::default().fg(theme.fg_secondary())),
+        ]));
+    }
+
+    text.lines.push(Line::from(""));
+    text.lines.push(Line::from(Span::styled(
         "Atalhos:",
         Style::default()
             .fg(theme.accent())
             .add_modifier(Modifier::BOLD),
     )));
+    text.lines.push(Line::from(vec![
+        Span::styled("TAB       ", Style::default().fg(theme.accent_secondary())),
+        Span::styled(
+            "Alterna modo Plan → Build → Review",
+            Style::default().fg(theme.fg()),
+        ),
+    ]));
     text.lines.push(Line::from(vec![
         Span::styled("↑/↓       ", Style::default().fg(theme.accent_secondary())),
         Span::styled("Scroll das mensagens", Style::default().fg(theme.fg())),

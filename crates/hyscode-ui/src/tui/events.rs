@@ -2,6 +2,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use std::time::Duration;
 
 use super::app::{ChatApp, Modal, SlashCommand, ThinkingLevel};
+use hyscode_core::models::enums::AgentMode;
 
 pub enum AppEvent {
     Tick,
@@ -90,6 +91,14 @@ fn handle_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
     }
 
     match key.code {
+        KeyCode::Tab => {
+            let next = app.cycle_mode();
+            app.add_system_message(format!(
+                "Modo alterado para: {} — {}",
+                next.display_name(),
+                next.description()
+            ));
+        }
         KeyCode::Enter => {
             app.command_palette_selection = None;
             if let Some(cmd) = SlashCommand::parse(&app.input) {
@@ -157,7 +166,7 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
             let max = match app.modal {
                 Some(Modal::ProviderSelection) => ChatApp::available_providers().len(),
                 Some(Modal::ModelSelection) => app.available_models.len(),
-                Some(Modal::AgentSelection) => 4,
+                Some(Modal::AgentSelection) => AgentMode::all().len(),
                 _ => 0,
             };
             app.modal_scroll_down(max);
@@ -191,10 +200,14 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
                         app.close_modal();
                     }
                     Modal::AgentSelection => {
-                        let agents = ["default", "code-review", "architecture", "debug"];
-                        if let Some(&agent) = agents.get(app.popup_selection) {
-                            app.set_agent(agent);
-                            app.add_system_message(format!("Agente alterado para: {}", agent));
+                        let modes = AgentMode::all();
+                        if let Some(&mode) = modes.get(app.popup_selection) {
+                            app.set_mode(mode);
+                            app.add_system_message(format!(
+                                "Modo alterado para: {} — {}",
+                                mode.display_name(),
+                                mode.description()
+                            ));
                         }
                         app.close_modal();
                     }

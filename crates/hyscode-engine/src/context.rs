@@ -55,6 +55,33 @@ impl ContextBuilder {
         self
     }
 
+    /// Constrói apenas o contexto de ambiente (OS, shell, cwd, git).
+    pub async fn build_environment_context(&self) -> anyhow::Result<String> {
+        self.environment_context().await
+    }
+
+    /// Constrói o contexto complementar (ambiente + arquivos extras + git diff) SEM o system prompt principal.
+    pub async fn build_context_without_prompt(&self) -> anyhow::Result<String> {
+        let mut parts = Vec::new();
+
+        parts.push(self.environment_context().await?);
+
+        if !self.extra_files.is_empty() {
+            let file_ctx = self.build_files_context(&self.extra_files).await;
+            if !file_ctx.is_empty() {
+                parts.push(file_ctx);
+            }
+        }
+
+        if self.include_git_diff {
+            if let Some(diff) = self.get_git_diff().await {
+                parts.push(diff);
+            }
+        }
+
+        Ok(parts.join("\n\n"))
+    }
+
     /// Constrói o system prompt final, incluindo contexto do ambiente.
     pub async fn build_system_prompt(&self) -> anyhow::Result<String> {
         let mut parts = Vec::new();

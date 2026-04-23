@@ -1,4 +1,5 @@
 use crate::tui::theme::Theme;
+use hyscode_core::models::enums::AgentMode;
 use hyscode_core::models::provider::ModelInfo;
 use hyscode_core::models::usage::TokenUsage;
 
@@ -152,7 +153,7 @@ impl SlashCommand {
             SlashCommand::Provider => "Seleciona o provedor de LLM",
             SlashCommand::Models => "Seleciona o modelo e nível de pensamento",
             SlashCommand::Config => "Abre painel de configurações",
-            SlashCommand::Agent => "Muda o agente/perfis",
+            SlashCommand::Agent => "Muda o modo do agente (Plan/Build/Review)",
             SlashCommand::Help => "Mostra ajuda de comandos",
             SlashCommand::Clear => "Limpa o histórico de chat",
             SlashCommand::Exit => "Sai da aplicação",
@@ -180,6 +181,10 @@ pub struct ChatApp {
     pub token_usage: Option<TokenUsage>,
     pub theme: Theme,
     pub current_agent: String,
+    /// Modo de operação atual do agente (Plan / Build / Review).
+    pub agent_mode: AgentMode,
+    /// Contexto de ambiente (OS, shell, cwd, git) pré-computado para concatenar ao system prompt.
+    pub environment_context: Option<String>,
     /// Modelos disponíveis para o provedor atual (buscados dinamicamente do provider).
     pub available_models: Vec<ModelInfo>,
     /// Frame de animação (incrementado a cada tick) para efeitos visuais.
@@ -188,6 +193,137 @@ pub struct ChatApp {
     pub command_palette_selection: Option<usize>,
     /// Quando Some, indica que o provedor mudou e os modelos devem ser recarregados.
     pub needs_provider_refresh: Option<String>,
+}
+
+/// System prompt base aplicado a TODOS os modos de agente.
+/// Contém identidade, capacidades, segurança e boas práticas universais.
+const BASE_SYSTEM_PROMPT: &str = r#"# IDENTIDADE
+Você é o HyscodeCLI, um agente de codificação especializado executando no terminal do usuário.
+Você opera dentro de um workspace Rust e deve respeitar rigorosamente as regras abaixo.
+
+# FERRAMENTAS DISPONÍVEIS
+Você tem acesso às seguintes ferramentas (tools):
+- read_file: ler conteúdo de arquivos
+- write_file: criar ou sobrescrever arquivos
+- list_dir: listar diretórios
+- search_code: buscar texto/padrões no código
+- execute_command: executar comandos shell (com timeout de 30s, máx 300s)
+- git_diff: obter diffs do repositório git
+
+# REGRAS DE SEGURANÇA (INQUEBRÁVEIS)
+1. NUNCA exponha, logue ou envie API keys, tokens ou secrets em mensagens.
+2. NUNCA execute comandos destrutivos (rm -rf, format, drop database) sem confirmação explícita do usuário.
+3. NUNCA escreva arquivos fora do diretório de trabalho atual (proteção contra path traversal).
+4. SEMPRE valide e sanitize paths antes de operações de filesystem.
+5. Comandos shell devem ter timeout; se um comando travar, avise o usuário.
+6. NUNCA execute comandos construídos com interpolação direta de input do usuário sem sanitização.
+
+# COMO USAR AS FERRAMENTAS
+1. SEMPRE leia um arquivo ANTES de modificá-lo. Nunca assuma o conteúdo.
+2. Use search_code para encontrar referências, usos e dependências antes de alterar.
+3. Ao escrever arquivos, forneça o conteúdo COMPLETO do arquivo, não apenas o diff.
+4. Ao executar comandos, explique O QUÊ o comando faz e POR QUÊ é necessário.
+5. Quando múltiplas ferramentas forem independentes, prefira executá-las em paralelo (quando suportado).
+
+# MENÇÕES (@)
+O usuário pode mencionar arquivos com @caminho/arquivo.rs. Esses arquivos serão lidos automaticamente e injetados no contexto como blocos de código. Use essas menções para focar sua análise.
+
+# FORMATO DE RESPOSTAS
+1. Use Markdown para estruturar respostas.
+2. Blocos de código devem especificar a linguagem (```rust, ```python, etc.).
+3. Seja direto e actionável. Evite verbosity desnecessária.
+4. Ao propor mudanças, explique o raciocínio ANTES de mostrar o código.
+5. Quando relevante, cite nomes de arquivos e números de linha.
+
+# BOAS PRÁTICAS GERAIS
+1. Nunca invente APIs, funções ou bibliotecas que não existem. Verifique antes.
+2. Prefira soluções idiomáticas da linguagem/framework do projeto.
+3. Se encontrar um erro, analise a causa raiz antes de aplicar correção paliativa.
+4. Mantenha compatibilidade com versões existentes; se houver breaking change, avise explicitamente.
+5. Respeite .gitignore e não commite arquivos de build ou secrets.
+6. Se não souber algo, admita em vez de alucinar.
+7. Considere o contexto já fornecido (ambiente, arquivos extras, git diff) como parte da realidade do projeto.
+
+# IDIOMA
+Responda no mesmo idioma da mensagem do usuário (português ou inglês), salvo se explicitamente solicitado outro.
+"#;
+
+/// Prompt específico de cada modo (apenas a especialização, sem repetir o base).
+fn mode_specific_prompt(mode: AgentMode) -> &'static str {
+    match mode {
+        AgentMode::Plan => {
+            r#"# MODO ATUAL: PLAN (Planejamento)
+
+MISSÃO:
+Analisar requisitos, ler arquivos existentes e criar um plano de implementação detalhado e acionável.
+
+RESTRIÇÕES ADICIONAIS:
+- Você NÃO pode criar, modificar ou excluir arquivos.
+- Você NÃO pode executar comandos shell.
+- Você NÃO pode realizar alterações no código-fonte.
+
+OBRIGAÇÕES:
+- Leia os arquivos relevantes para entender o contexto antes de propor qualquer plano.
+- Produza um plano estruturado contendo:
+  1. Visão geral do problema
+  2. Análise do estado atual (arquivos lidos e suas funções)
+  3. Etapas detalhadas de implementação (passo a passo)
+  4. Arquivos que serão afetados
+  5. Potenciais riscos e considerações
+  6. Critérios de aceitação
+- Ao final, pergunte explicitamente se o usuário deseja aprovar o plano para execução no modo BUILD.
+
+O plano ficará salvo na memória da conversa como contexto para o modo BUILD."#
+        }
+        AgentMode::Build => {
+            r#"# MODO ATUAL: BUILD (Implementação)
+
+MISSÃO:
+Implementar mudanças no código, executar comandos e realizar tarefas de desenvolvimento ativo.
+
+DIRETRIZES:
+- Você tem acesso completo a todas as ferramentas.
+- Se houver um plano aprovado na conversa, SIGA-O EXATAMENTE ou explique detalhadamente por que está desviando.
+- Sempre verifique o estado atual antes de modificar (read_file antes de write_file).
+- Use search_code para encontrar referências antes de alterar.
+- Confirme o que vai fazer antes de write_file ou execute_command quando a ação for destrutiva.
+- Se encontrar erro, leia o arquivo relevante e corrija de forma cirúrgica.
+- Ao final de cada tarefa, explique o que foi feito, quais arquivos foram alterados e por quê.
+- Prefira soluções simples, idiomáticas e com o menor impacto possível.
+- Execute testes (cargo test, etc.) quando disponíveis para validar mudanças."#
+        }
+        AgentMode::Review => {
+            r#"# MODO ATUAL: REVIEW (Revisão e Análise)
+
+MISSÃO:
+Analisar código, identificar problemas, revisar mudanças, investigar bugs e avaliar qualidade.
+
+RESTRIÇÕES ADICIONAIS:
+- Você NÃO deve modificar arquivos sem permissão explícita do usuário.
+- Você NÃO deve executar comandos destrutivos.
+
+DIRETRIZES:
+- Análises devem ser profundas e estruturadas por categoria:
+  1. SEGURANÇA: vulnerabilidades, injeções, sanitização inadequada, secrets expostos, validação de input
+  2. PERFORMANCE: algoritmos ineficientes, alocações desnecessárias, I/O bloqueante, memory leaks, hot paths
+  3. LEGIBILIDADE & MANUTENIBILIDADE: nomes confusos, funções longas, acoplamento excessivo, duplicação de código
+  4. CORRETUDE: race conditions, erros silenciados, edge cases não tratados, lógica off-by-one
+  5. TESTES: cobertura insuficiente, casos de borda ignorados, mocks inadequados, flaky tests
+- Para debug: analise logs, stack traces e comportamentos anômalos. Sugira hipóteses de causa raiz e passos concretos para validar cada uma.
+- Para git/PR: analise o diff completo, contexto do branch, histórico de commits e possíveis conflitos futuros.
+- Seja direto e actionável: cada problema encontrado DEVE ter uma sugestão de correção ou um snippet de código corrigido.
+- Priorize os problemas por severidade (crítico, alto, médio, baixo)."#
+        }
+    }
+}
+
+/// Constrói o system prompt completo unindo o base universal com a especialização do modo.
+pub fn build_system_prompt_for_mode(mode: AgentMode) -> String {
+    format!(
+        "{}\n\n{}",
+        BASE_SYSTEM_PROMPT.trim(),
+        mode_specific_prompt(mode).trim()
+    )
 }
 
 impl ChatApp {
@@ -216,12 +352,14 @@ impl ChatApp {
             token_usage: None,
             theme,
             current_agent: "default".to_owned(),
+            agent_mode: AgentMode::Plan,
+            environment_context: None,
             animation_frame: 0,
             command_palette_selection: None,
             needs_provider_refresh: None,
         };
         app.add_system_message(
-            "Bem-vindo ao Hyscode! Digite /help para ver os comandos disponíveis.",
+            "Bem-vindo ao Hyscode! [TAB] alterna modo  |  /help para comandos  |  Modo atual: PLAN",
         );
         app
     }
@@ -235,7 +373,7 @@ impl ChatApp {
             ("/provider", "Seleciona o provedor de LLM"),
             ("/models", "Seleciona o modelo e nível de pensamento"),
             ("/config", "Abre painel de configurações"),
-            ("/agent", "Muda o agente/perfil"),
+            ("/agent", "Muda o modo do agente (Plan/Build/Review)"),
             ("/clear", "Limpa o histórico de chat"),
             ("/help", "Mostra ajuda de comandos"),
             ("/exit", "Sai da aplicação"),
@@ -302,21 +440,22 @@ impl ChatApp {
 
     pub fn set_agent(&mut self, agent: &str) {
         self.current_agent = agent.to_owned();
-        let prompt = match agent {
-            "code-review" => {
-                "Você é um revisor de código especialista. Analise o código focado em: segurança, performance, legibilidade, manutenibilidade e aderência às melhores práticas do ecossistema. Seja direto e actionável."
-            }
-            "architecture" => {
-                "Você é um arquiteto de software sênior. Ajude a projetar sistemas escaláveis, definir boundaries de serviços, escolher tecnologias e criar diagrams de arquitetura conceituais quando útil."
-            }
-            "debug" => {
-                "Você é um especialista em debugging. Analise logs, stack traces e comportamentos anômalos. Sugira hipóteses de causa raiz e passos concretos para validar cada uma."
-            }
-            _ => {
-                "Você é um agente de codificação especializado em Rust. Ajude com tarefas de desenvolvimento, refatoração, testes e documentação de código."
-            }
-        };
-        self.system_prompt = Some(prompt.to_owned());
+        self.system_prompt = Some(build_system_prompt_for_mode(self.agent_mode));
+    }
+
+    pub fn set_mode(&mut self, mode: AgentMode) {
+        self.agent_mode = mode;
+        self.system_prompt = Some(build_system_prompt_for_mode(mode));
+    }
+
+    pub fn cycle_mode(&mut self) -> AgentMode {
+        let next = self.agent_mode.next();
+        self.set_mode(next);
+        next
+    }
+
+    pub fn mode_display(&self) -> &'static str {
+        self.agent_mode.display_name()
     }
 
     pub fn update_token_usage(&mut self, usage: TokenUsage) {
