@@ -147,7 +147,6 @@ pub async fn run(
         &mut terminal,
         &mut app,
         &provider,
-        &model,
         &conv_manager,
         &conv_id,
         &ctx_builder,
@@ -246,14 +245,12 @@ async fn run_chat_loop<B: Backend>(
     terminal: &mut Terminal<B>,
     app: &mut ChatApp,
     provider: &Arc<dyn Provider>,
-    model: &str,
     conv_manager: &ConversationManager,
     conv_id: &str,
     ctx_builder: &ContextBuilder,
     config: &Config,
 ) -> anyhow::Result<()> {
     let mut active_provider = provider.clone();
-    let mut active_model = model.to_owned();
 
     loop {
         terminal.draw(|f| draw(f, app))?;
@@ -265,8 +262,7 @@ async fn run_chat_loop<B: Backend>(
                     app.set_available_models(models);
                     active_provider = new_provider;
                     if let Some(first) = app.available_models.first() {
-                        active_model = first.id.clone();
-                        app.current_model = active_model.clone();
+                        app.current_model = first.id.clone();
                         app.add_system_message(format!(
                             "Modelos carregados: {} disponíveis para {}",
                             app.available_models.len(),
@@ -292,11 +288,12 @@ async fn run_chat_loop<B: Backend>(
         if let Some(ev) = event {
             let has_new_message = handle_event(app, ev)?;
             if has_new_message {
+                let current_model = app.current_model.clone();
                 if let Some(last) = app.messages.last() {
                     let text = last.raw_content.clone();
                     if let Err(e) = process_message(
                         &active_provider,
-                        &active_model,
+                        &current_model,
                         text,
                         terminal,
                         app,

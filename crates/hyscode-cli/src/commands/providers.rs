@@ -13,6 +13,7 @@ use hyscode_provider::{
         openai::{OpenAIAdapter, OpenAIConfig},
         openrouter::{OpenRouterAdapter, OpenRouterConfig},
         zai::{ZAiAdapter, ZAiConfig},
+        opencode_go::{OpenCodeGoAdapter, OpenCodeGoConfig},
     },
     registry::ProviderRegistry,
 };
@@ -165,6 +166,21 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
             max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
         });
         registry.register("gemini", Arc::new(gemini));
+    }
+
+    // OpenCode Go — OpenAI-compatible
+    {
+        let api_key = resolve_api_key("opencode-go", config).unwrap_or_default();
+        let provider_config = config.providers.get("opencode-go");
+        let opencode_go = OpenCodeGoAdapter::new(OpenCodeGoConfig {
+            api_key,
+            default_model: provider_config
+                .map(|p| p.default_model.clone())
+                .unwrap_or_else(|| "opencode-go/kimi-k2.6".to_owned()),
+            timeout_secs: provider_config.map(|p| p.timeout_secs).unwrap_or(120),
+            max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
+        });
+        registry.register("opencode-go", Arc::new(opencode_go));
     }
 
     if !config.profile.default_provider.is_empty() {

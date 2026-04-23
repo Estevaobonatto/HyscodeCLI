@@ -20,3 +20,6 @@ pub mod hyscode;
 
 #[cfg(feature = "gemini")]
 pub mod gemini;
+
+#[cfg(feature = "opencode-go")]
+pub mod opencode_go;

@@ -34,6 +34,7 @@ pub async fn run() -> anyhow::Result<()> {
         "copilot",
         "zai",
         "hyscode",
+        "opencode-go",
     ];
     let provider_idx = dialoguer::Select::new()
         .with_prompt("Escolha o provedor de LLM padrão")
@@ -137,6 +138,7 @@ fn default_model_for(provider: &str) -> &'static str {
         "copilot" => "gpt-4o",
         "zai" => "z-pro",
         "hyscode" => "hyscode-smart",
+        "opencode-go" => "opencode-go/kimi-k2.6",
         _ => "default",
     }
 }

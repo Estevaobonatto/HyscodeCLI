@@ -589,6 +589,7 @@ impl ChatApp {
             "zai",
             "hyscode",
             "gemini",
+            "opencode-go",
         ]
     }
 }

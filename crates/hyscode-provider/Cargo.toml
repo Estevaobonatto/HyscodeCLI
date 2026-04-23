@@ -17,6 +17,7 @@ openrouter  = []
 zai         = []
 hyscode     = ["openai"] # Hyscode usa schema OpenAI-compatible
 gemini      = []
+opencode-go = ["openai"] # OpenCode Go usa schema OpenAI-compatible
 
 [dependencies]
 hyscode-core = { path = "../hyscode-core" }

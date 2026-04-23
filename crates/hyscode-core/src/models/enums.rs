@@ -14,6 +14,8 @@ pub enum ProviderKind {
     #[serde(rename = "zai")]
     ZAi,
     Hyscode,
+    #[serde(rename = "opencode-go")]
+    OpenCodeGo,
 }
 
 impl ProviderKind {
@@ -25,6 +27,7 @@ impl ProviderKind {
             Self::OpenRouter => "openrouter",
             Self::ZAi => "zai",
             Self::Hyscode => "hyscode",
+            Self::OpenCodeGo => "opencode-go",
         }
     }
 }
