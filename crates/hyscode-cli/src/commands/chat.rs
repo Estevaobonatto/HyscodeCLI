@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use futures::stream::StreamExt;
-use hyscode_config::load_config;
+use hyscode_config::{load_config, file::Config};
 use hyscode_core::{
     models::{message::Message, request::ChatRequest, usage::TokenUsage},
     traits::provider::Provider,
@@ -13,8 +13,8 @@ use hyscode_engine::{
     token::TokenEstimator,
 };
 use hyscode_ui::tui::app::{AppStatus, ChatApp, MessageRole};
-use hyscode_ui::tui::theme::Theme;
 use hyscode_ui::tui::events::{handle_event, read_event};
+use hyscode_ui::tui::theme::Theme;
 use hyscode_ui::tui::ui::draw;
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -27,7 +27,7 @@ use ratatui::{
 };
 use std::time::Duration;
 
-use super::providers::{build_registry, resolve_model_alias};
+use super::providers::build_registry;
 
 /// Retorna o caminho do banco de dados de conversas.
 fn conversations_db_path() -> std::path::PathBuf {
@@ -55,10 +55,9 @@ pub async fn run(
         .or_else(|| std::env::var("HYSCODE_PROVIDER").ok())
         .unwrap_or_else(|| config.profile.default_provider.clone());
 
-    let raw_model = model_override
+    let model = model_override
         .or_else(|| std::env::var("HYSCODE_MODEL").ok())
         .unwrap_or_else(|| config.profile.default_model.clone());
-    let model = resolve_model_alias(&raw_model, &provider_name);
 
     let registry = build_registry(&config).await?;
 
@@ -67,10 +66,17 @@ pub async fn run(
         .or_else(|| registry.default_provider())
         .context("Nenhum provedor configurado. Use `hyscode provider add`.")?;
 
+    // Busca modelos disponíveis dinamicamente do provedor.
+    let available_models = provider
+        .list_models()
+        .await
+        .unwrap_or_default();
+
     // Inicializa o ConversationManager para persistência.
     let db_path = conversations_db_path();
     if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent).context("Falha ao criar diretório do banco de conversas")?;
+        std::fs::create_dir_all(parent)
+            .context("Falha ao criar diretório do banco de conversas")?;
     }
     let conv_manager = ConversationManager::new(db_path).await?;
     let conv_id = conv_manager.create(&provider_name, &model).await?;
@@ -108,7 +114,12 @@ pub async fn run(
     // Constrói system prompt com contexto de arquivos + ambiente
     let system_prompt = ctx_builder.build_system_prompt().await.unwrap_or_default();
     let theme = Theme::from_str(&config.ui.theme).unwrap_or_default();
-    let mut app = ChatApp::new(provider_name.clone(), model.clone(), theme);
+    let mut app = ChatApp::new(
+        provider_name.clone(),
+        model.clone(),
+        available_models,
+        theme,
+    );
     if !system_prompt.is_empty() {
         app.set_system_prompt(system_prompt);
     }
@@ -140,6 +151,7 @@ pub async fn run(
         &conv_manager,
         &conv_id,
         &ctx_builder,
+        &config,
     )
     .await;
 
@@ -222,6 +234,7 @@ async fn run_non_interactive(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_chat_loop<B: Backend>(
     terminal: &mut Terminal<B>,
     app: &mut ChatApp,
@@ -230,9 +243,43 @@ async fn run_chat_loop<B: Backend>(
     conv_manager: &ConversationManager,
     conv_id: &str,
     ctx_builder: &ContextBuilder,
+    config: &Config,
 ) -> anyhow::Result<()> {
+    let mut active_provider = provider.clone();
+    let mut active_model = model.to_owned();
+
     loop {
         terminal.draw(|f| draw(f, app))?;
+
+        // Se o provedor mudou, recarrega os modelos do novo provider
+        if let Some(new_provider_name) = app.needs_provider_refresh.take() {
+            match refresh_models(config, &new_provider_name).await {
+                Ok((new_provider, models)) => {
+                    app.set_available_models(models);
+                    active_provider = new_provider;
+                    if let Some(first) = app.available_models.first() {
+                        active_model = first.id.clone();
+                        app.current_model = active_model.clone();
+                        app.add_system_message(format!(
+                            "Modelos carregados: {} disponíveis para {}",
+                            app.available_models.len(),
+                            new_provider_name
+                        ));
+                    } else {
+                        app.add_system_message(format!(
+                            "Aviso: nenhum modelo encontrado para {}",
+                            new_provider_name
+                        ));
+                    }
+                }
+                Err(e) => {
+                    app.add_system_message(format!(
+                        "Erro ao carregar modelos para {}: {}",
+                        new_provider_name, e
+                    ));
+                }
+            }
+        }
 
         let event = read_event(Duration::from_millis(50))?;
         if let Some(ev) = event {
@@ -241,8 +288,8 @@ async fn run_chat_loop<B: Backend>(
                 if let Some(last) = app.messages.last() {
                     let text = last.raw_content.clone();
                     if let Err(e) = process_message(
-                        provider,
-                        model,
+                        &active_provider,
+                        &active_model,
                         text,
                         terminal,
                         app,
@@ -262,6 +309,18 @@ async fn run_chat_loop<B: Backend>(
             return Ok(());
         }
     }
+}
+
+async fn refresh_models(
+    config: &Config,
+    provider_name: &str,
+) -> anyhow::Result<(Arc<dyn Provider>, Vec<hyscode_core::models::provider::ModelInfo>)> {
+    let registry = build_registry(config).await?;
+    let provider = registry
+        .get(provider_name)
+        .context(format!("Provedor '{}' não configurado.", provider_name))?;
+    let models = provider.list_models().await.unwrap_or_default();
+    Ok((provider, models))
 }
 
 #[allow(clippy::too_many_arguments)]

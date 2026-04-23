@@ -24,7 +24,7 @@ impl Theme {
     /// Fundo preto absoluto.
     pub fn bg(&self) -> Color {
         match self {
-            Theme::Dark => Color::Rgb(10, 10, 14),   // quase preto com leve tom azulado
+            Theme::Dark => Color::Rgb(10, 10, 14), // quase preto com leve tom azulado
             Theme::Light => Color::Rgb(250, 250, 252),
         }
     }

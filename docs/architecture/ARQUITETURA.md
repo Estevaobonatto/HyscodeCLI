@@ -36,10 +36,10 @@ O HyscodeCLI é composto por duas macro-partes:
 │  │        │  │         │  │          │  │        │  │ Provider       ││
 │  └────────┘  └────────┘  └──────────┘  └────────┘  │ Service (SaaS) ││
 │                                                     │                ││
-│  ┌────────┐                                         │ ┌────────────┐ ││
-│  │GitHub  │                                         │ │ API Gateway│ ││
-│  │Copilot │                                         │ │ Router     │ ││
-│  └────────┘                                         │ │ Billing    │ ││
+│  ┌────────┐  ┌────────┐                             │ ┌────────────┐ ││
+│  │GitHub  │  │Google  │                             │ │ API Gateway│ ││
+│  │Copilot │  │Gemini  │                             │ │ Router     │ ││
+│  └────────┘  └────────┘                             │ │ Billing    │ ││
 │                                                     │ └────────────┘ ││
 │                                                     └────────────────┘│
 └───────────────────────────────────────────────────────────────────────┘
@@ -87,6 +87,7 @@ O HyscodeCLI é composto por duas macro-partes:
   - `GitHubCopilotAdapter` — ✅ Completo (delega ao OpenAI adapter; requer token OAuth)
   - `OpenRouterAdapter` — ✅ Completo (delega ao OpenAI adapter; default model `openai/gpt-4o`)
   - `ZAiAdapter` — ✅ Completo (delega ao OpenAI adapter; base_url `https://api.z.ai/v1`; default model `z-pro`)
+  - `GeminiAdapter` — ✅ Completo (Google AI Studio REST API + SSE; modelos Gemini 2.x/3.x)
 
 ### 2.4. Tool Runner (`hyscode-tools`)
 

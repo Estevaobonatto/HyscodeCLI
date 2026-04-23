@@ -8,6 +8,7 @@ pub const ENV_OPENAI_API_KEY: &str = "OPENAI_API_KEY";
 pub const ENV_ANTHROPIC_API_KEY: &str = "ANTHROPIC_API_KEY";
 pub const ENV_OPENROUTER_API_KEY: &str = "OPENROUTER_API_KEY";
 pub const ENV_ZAI_API_KEY: &str = "ZAI_API_KEY";
+pub const ENV_GEMINI_API_KEY: &str = "GEMINI_API_KEY";
 pub const ENV_DEFAULT_PROVIDER: &str = "HYSCODE_PROVIDER";
 pub const ENV_DEFAULT_MODEL: &str = "HYSCODE_MODEL";
 pub const ENV_LOG_LEVEL: &str = "HYSCODE_LOG";
@@ -20,6 +21,7 @@ pub fn env_var_name_for_provider(provider: &str) -> Option<&'static str> {
         "anthropic" => Some(ENV_ANTHROPIC_API_KEY),
         "openrouter" => Some(ENV_OPENROUTER_API_KEY),
         "zai" => Some(ENV_ZAI_API_KEY),
+        "gemini" => Some(ENV_GEMINI_API_KEY),
         _ => None,
     }
 }

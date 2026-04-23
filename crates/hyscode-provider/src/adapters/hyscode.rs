@@ -212,8 +212,10 @@ impl Provider for HyscodeProviderAdapter {
             .map(|m| ModelInfo {
                 id: m.id.clone(),
                 name: m.id,
-                context_window: 200_000,
+                context_window: Some(200_000),
+                max_output_tokens: None,
                 capabilities: self.capabilities(),
+                pricing: None,
             })
             .collect())
     }

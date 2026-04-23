@@ -25,10 +25,7 @@ impl ConversationManager {
             tokio::fs::File::create(db_path).await?;
         }
 
-        let database_url = format!(
-            "sqlite:///{}",
-            db_path.to_string_lossy().replace('\\', "/")
-        );
+        let database_url = format!("sqlite:///{}", db_path.to_string_lossy().replace('\\', "/"));
         info!("Inicializando ConversationManager em {}", db_path.display());
 
         let pool = SqlitePoolOptions::new()

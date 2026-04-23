@@ -156,9 +156,7 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
         KeyCode::Down => {
             let max = match app.modal {
                 Some(Modal::ProviderSelection) => ChatApp::available_providers().len(),
-                Some(Modal::ModelSelection) => {
-                    ChatApp::available_models_for_provider(&app.current_provider).len()
-                }
+                Some(Modal::ModelSelection) => app.available_models.len(),
                 Some(Modal::AgentSelection) => 4,
                 _ => 0,
             };
@@ -172,21 +170,18 @@ fn handle_modal_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
                         if let Some(&provider) = providers.get(app.popup_selection) {
                             app.current_provider = provider.to_owned();
                             app.add_system_message(format!("Provedor alterado para: {}", provider));
-                            // Reset model to default for new provider
-                            let models = ChatApp::available_models_for_provider(provider);
-                            if let Some(&model) = models.first() {
-                                app.current_model = model.to_owned();
-                            }
+                            // Sinaliza que os modelos devem ser recarregados do novo provider
+                            app.needs_provider_refresh = Some(provider.to_owned());
+                            app.current_model.clear();
                         }
                         app.close_modal();
                     }
                     Modal::ModelSelection => {
-                        let models = ChatApp::available_models_for_provider(&app.current_provider);
-                        if let Some(&model) = models.get(app.popup_selection) {
-                            app.current_model = model.to_owned();
+                        if let Some(model) = app.available_models.get(app.popup_selection) {
+                            app.current_model = model.id.clone();
                             app.add_system_message(format!(
                                 "Modelo alterado para: {} (pensamento: {})",
-                                model,
+                                model.name,
                                 app.thinking_level.as_str()
                             ));
                         }

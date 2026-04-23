@@ -92,19 +92,25 @@ impl Provider for CopilotAdapter {
             ModelInfo {
                 id: "gpt-4o".to_owned(),
                 name: "GPT-4o (Copilot)".to_owned(),
-                context_window: 128_000,
+                context_window: Some(128_000),
+                max_output_tokens: None,
+                pricing: None,
                 capabilities: capabilities.clone(),
             },
             ModelInfo {
                 id: "gpt-4o-mini".to_owned(),
                 name: "GPT-4o Mini (Copilot)".to_owned(),
-                context_window: 128_000,
+                context_window: Some(128_000),
+                max_output_tokens: None,
+                pricing: None,
                 capabilities: capabilities.clone(),
             },
             ModelInfo {
                 id: "claude-3.5-sonnet".to_owned(),
                 name: "Claude 3.5 Sonnet (Copilot)".to_owned(),
-                context_window: 200_000,
+                context_window: Some(200_000),
+                max_output_tokens: None,
+                pricing: None,
                 capabilities,
             },
         ])

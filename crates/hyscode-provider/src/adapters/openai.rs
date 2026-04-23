@@ -35,7 +35,7 @@ impl Default for OpenAIConfig {
         Self {
             api_key: String::new(),
             base_url: "https://api.openai.com/v1".to_owned(),
-            default_model: "gpt-4o".to_owned(),
+            default_model: "gpt-5.4".to_owned(),
             timeout_secs: 120,
             max_retries: 3,
         }
@@ -170,46 +170,66 @@ impl Provider for OpenAIAdapter {
     }
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
-        let url = format!("{}/models", self.config.base_url);
-        let response = self
-            .client
-            .get(&url)
-            .headers(self.auth_headers().map_err(|e| ProviderError::Http {
-                status: 0,
-                message: e.to_string(),
-            })?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Http {
-                status: 0,
-                message: e.to_string(),
-            })?;
-
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Http {
-                status,
-                message: text,
-            });
-        }
-
-        let models_resp: OpenAIModelsResponse =
-            response.json().await.map_err(|e| ProviderError::Http {
-                status: 0,
-                message: e.to_string(),
-            })?;
-
-        Ok(models_resp
-            .data
-            .into_iter()
-            .map(|m| ModelInfo {
-                id: m.id.clone(),
-                name: m.id,
-                context_window: 128_000,
-                capabilities: self.capabilities(),
-            })
-            .collect())
+        let capabilities = self.capabilities();
+        Ok(vec![
+            ModelInfo {
+                id: "gpt-5.4".to_owned(),
+                name: "GPT-5.4".to_owned(),
+                context_window: Some(1_050_000),
+                max_output_tokens: Some(128_000),
+                capabilities: capabilities.clone(),
+                pricing: Some(hyscode_core::models::provider::ModelPricing {
+                    currency: "USD".to_owned(),
+                    unit: "per_1m_tokens".to_owned(),
+                    input: Some(2.5),
+                    output: Some(15.0),
+                    cached_input: Some(0.25),
+                    long_context_input: Some(5.0),
+                    long_context_cached_input: Some(0.5),
+                    long_context_output: Some(22.5),
+                    audio_input: None,
+                    image_output: None,
+                }),
+            },
+            ModelInfo {
+                id: "gpt-5.4-mini".to_owned(),
+                name: "GPT-5.4 Mini".to_owned(),
+                context_window: Some(400_000),
+                max_output_tokens: Some(128_000),
+                capabilities: capabilities.clone(),
+                pricing: Some(hyscode_core::models::provider::ModelPricing {
+                    currency: "USD".to_owned(),
+                    unit: "per_1m_tokens".to_owned(),
+                    input: Some(0.75),
+                    output: Some(4.5),
+                    cached_input: Some(0.075),
+                    long_context_input: None,
+                    long_context_cached_input: None,
+                    long_context_output: None,
+                    audio_input: None,
+                    image_output: None,
+                }),
+            },
+            ModelInfo {
+                id: "gpt-5.4-nano".to_owned(),
+                name: "GPT-5.4 Nano".to_owned(),
+                context_window: Some(400_000),
+                max_output_tokens: Some(128_000),
+                capabilities,
+                pricing: Some(hyscode_core::models::provider::ModelPricing {
+                    currency: "USD".to_owned(),
+                    unit: "per_1m_tokens".to_owned(),
+                    input: Some(0.2),
+                    output: Some(1.25),
+                    cached_input: Some(0.02),
+                    long_context_input: None,
+                    long_context_cached_input: None,
+                    long_context_output: None,
+                    audio_input: None,
+                    image_output: None,
+                }),
+            },
+        ])
     }
 
     async fn validate(&self) -> Result<(), ProviderError> {
@@ -441,16 +461,6 @@ struct OpenAIStreamChoice {
 struct OpenAIStreamDelta {
     role: Option<String>,
     content: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIModelsResponse {
-    data: Vec<OpenAIModel>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAIModel {
-    id: String,
 }
 
 impl OpenAIChatResponse {

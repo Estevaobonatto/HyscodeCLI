@@ -4,7 +4,9 @@ use ratatui::{
 };
 
 use super::app::ChatApp;
-use super::components::{draw_chat_area, draw_command_palette, draw_header, draw_help, draw_input_bar, draw_modal};
+use super::components::{
+    draw_chat_area, draw_command_palette, draw_header, draw_help, draw_input_bar, draw_modal,
+};
 
 pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
     let area = frame.size();
@@ -13,10 +15,10 @@ pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2),  // header minimalista
-            Constraint::Min(1),     // chat area
-            Constraint::Length(3),  // input bar
-            Constraint::Length(1),  // footer sutil
+            Constraint::Length(2), // header minimalista
+            Constraint::Min(1),    // chat area
+            Constraint::Length(3), // input bar
+            Constraint::Length(1), // footer sutil
         ])
         .split(area);
 
@@ -40,7 +42,7 @@ pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
 }
 
 fn draw_footer(frame: &mut Frame, app: &ChatApp, area: ratatui::layout::Rect) {
-    use ratatui::style::{Style, Color};
+    use ratatui::style::{Color, Style};
     use ratatui::widgets::Paragraph;
     let theme = app.theme;
     let status = match app.status {
@@ -50,7 +52,10 @@ fn draw_footer(frame: &mut Frame, app: &ChatApp, area: ratatui::layout::Rect) {
         super::app::AppStatus::Error => "erro",
     };
     let text = format!(" {} ", status);
-    let footer = Paragraph::new(text)
-        .style(Style::default().fg(theme.fg_muted()).bg(Color::Rgb(15, 15, 20)));
+    let footer = Paragraph::new(text).style(
+        Style::default()
+            .fg(theme.fg_muted())
+            .bg(Color::Rgb(15, 15, 20)),
+    );
     frame.render_widget(footer, area);
 }

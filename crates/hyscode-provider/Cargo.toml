@@ -9,13 +9,14 @@ repository.workspace = true
 rust-version.workspace = true
 
 [features]
-default     = ["openai", "anthropic", "hyscode"]
+default     = ["openai", "anthropic", "hyscode", "gemini"]
 openai      = []
 anthropic   = []
 copilot     = []
 openrouter  = []
 zai         = []
 hyscode     = ["openai"] # Hyscode usa schema OpenAI-compatible
+gemini      = []
 
 [dependencies]
 hyscode-core = { path = "../hyscode-core" }

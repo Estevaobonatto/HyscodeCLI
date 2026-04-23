@@ -128,7 +128,10 @@ pub fn render_markdown_lines(input: &str, base_fg: Color, accent: Color) -> Vec<
                 for hl_line in highlighted.lines() {
                     lines.push(Line::from(vec![
                         Span::styled("  ".to_string(), Style::default()),
-                        Span::styled(hl_line.to_string(), Style::default().fg(Color::Rgb(200, 200, 220))),
+                        Span::styled(
+                            hl_line.to_string(),
+                            Style::default().fg(Color::Rgb(200, 200, 220)),
+                        ),
                     ]));
                 }
                 code_lang.clear();
@@ -174,7 +177,9 @@ pub fn render_markdown_lines(input: &str, base_fg: Color, accent: Color) -> Vec<
             Event::Code(code) => {
                 current_spans.push(Span::styled(
                     format!(" `{}` ", code),
-                    Style::default().fg(Color::Rgb(180, 180, 195)).add_modifier(Modifier::DIM),
+                    Style::default()
+                        .fg(Color::Rgb(180, 180, 195))
+                        .add_modifier(Modifier::DIM),
                 ));
             }
             Event::Start(Tag::Paragraph) => {}
@@ -188,16 +193,10 @@ pub fn render_markdown_lines(input: &str, base_fg: Color, accent: Color) -> Vec<
                 flush_spans(&mut lines, &mut current_spans);
             }
             Event::Start(Tag::Link { .. }) => {
-                current_spans.push(Span::styled(
-                    "[".to_string(),
-                    Style::default().fg(base_fg),
-                ));
+                current_spans.push(Span::styled("[".to_string(), Style::default().fg(base_fg)));
             }
             Event::End(TagEnd::Link) => {
-                current_spans.push(Span::styled(
-                    "]".to_string(),
-                    Style::default().fg(base_fg),
-                ));
+                current_spans.push(Span::styled("]".to_string(), Style::default().fg(base_fg)));
             }
             Event::HardBreak | Event::SoftBreak => {
                 flush_spans(&mut lines, &mut current_spans);

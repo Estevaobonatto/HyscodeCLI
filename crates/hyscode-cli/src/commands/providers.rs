@@ -9,7 +9,10 @@ use hyscode_config::{env::api_key_from_env, file::Config, vault::get_api_key};
 use hyscode_provider::{
     adapters::{
         anthropic::{AnthropicAdapter, AnthropicConfig},
+        gemini::{GeminiAdapter, GeminiConfig},
         openai::{OpenAIAdapter, OpenAIConfig},
+        openrouter::{OpenRouterAdapter, OpenRouterConfig},
+        zai::{ZAiAdapter, ZAiConfig},
     },
     registry::ProviderRegistry,
 };
@@ -35,15 +38,18 @@ pub fn resolve_api_key(provider: &str, config: &Config) -> Option<String> {
     None
 }
 
-/// Constrói um ProviderRegistry com todos os provedores configurados.
+/// Constrói um ProviderRegistry com todos os provedores conhecidos.
 ///
-/// Cada provedor é registrado somente se uma API key for encontrada.
-/// Usa os adapters nativos de cada provedor (ex: AnthropicAdapter para "anthropic").
+/// Todos os provedores são registrados independentemente de terem API key,
+/// para que `list_models` funcione mesmo sem configuração prévia.
+/// A API key é usada vazia como fallback; erros de credenciais só ocorrem
+/// no momento de enviar requisições de chat.
 pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry> {
     let mut registry = ProviderRegistry::new();
 
     // OpenAI
-    if let Some(api_key) = resolve_api_key("openai", config) {
+    {
+        let api_key = resolve_api_key("openai", config).unwrap_or_default();
         let provider_config = config.providers.get("openai");
         let openai = OpenAIAdapter::new(OpenAIConfig {
             api_key,
@@ -52,7 +58,7 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
                 .unwrap_or_else(|| "https://api.openai.com/v1".to_owned()),
             default_model: provider_config
                 .map(|p| p.default_model.clone())
-                .unwrap_or_else(|| "gpt-4o".to_owned()),
+                .unwrap_or_else(|| "gpt-5.4".to_owned()),
             timeout_secs: provider_config.map(|p| p.timeout_secs).unwrap_or(120),
             max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
         });
@@ -60,28 +66,29 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
     }
 
     // Anthropic — usa AnthropicAdapter nativo (suporta API Messages correta)
-    if let Some(api_key) = resolve_api_key("anthropic", config) {
+    {
+        let api_key = resolve_api_key("anthropic", config).unwrap_or_default();
         let provider_config = config.providers.get("anthropic");
         let anthropic = AnthropicAdapter::new(AnthropicConfig {
             api_key,
             default_model: provider_config
                 .map(|p| p.default_model.clone())
-                .unwrap_or_else(|| "claude-3-5-sonnet-20241022".to_owned()),
+                .unwrap_or_else(|| "claude-sonnet-4-6".to_owned()),
             timeout_secs: provider_config.map(|p| p.timeout_secs).unwrap_or(120),
             max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
         });
         registry.register("anthropic", Arc::new(anthropic));
     }
 
-    // OpenRouter — OpenAI-compatible
-    if let Some(api_key) = resolve_api_key("openrouter", config) {
+    // OpenRouter — usa adapter especializado com list_models correta
+    {
+        let api_key = resolve_api_key("openrouter", config).unwrap_or_default();
         let provider_config = config.providers.get("openrouter");
-        let or = OpenAIAdapter::new(OpenAIConfig {
+        let or = OpenRouterAdapter::new(OpenRouterConfig {
             api_key,
-            base_url: "https://openrouter.ai/api/v1".to_owned(),
             default_model: provider_config
                 .map(|p| p.default_model.clone())
-                .unwrap_or_else(|| "openai/gpt-4o".to_owned()),
+                .unwrap_or_else(|| "openai/gpt-5.4".to_owned()),
             timeout_secs: provider_config.map(|p| p.timeout_secs).unwrap_or(120),
             max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
         });
@@ -89,7 +96,8 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
     }
 
     // Hyscode — OpenAI-compatible
-    if let Some(api_key) = resolve_api_key("hyscode", config) {
+    {
+        let api_key = resolve_api_key("hyscode", config).unwrap_or_default();
         let provider_config = config.providers.get("hyscode");
         let hyscode = OpenAIAdapter::new(OpenAIConfig {
             api_key,
@@ -106,7 +114,8 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
     }
 
     // Copilot — OpenAI-compatible com token OAuth
-    if let Some(api_key) = resolve_api_key("copilot", config) {
+    {
+        let api_key = resolve_api_key("copilot", config).unwrap_or_default();
         let provider_config = config.providers.get("copilot");
         let copilot = OpenAIAdapter::new(OpenAIConfig {
             api_key,
@@ -122,21 +131,40 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
         registry.register("copilot", Arc::new(copilot));
     }
 
-    // Z.ai — OpenAI-compatible
-    if let Some(api_key) = resolve_api_key("zai", config) {
+    // Z.ai — usa adapter especializado com list_models correta
+    {
+        let api_key = resolve_api_key("zai", config).unwrap_or_default();
         let provider_config = config.providers.get("zai");
-        let zai = OpenAIAdapter::new(OpenAIConfig {
+        let zai = ZAiAdapter::new(ZAiConfig {
             api_key,
             base_url: provider_config
                 .and_then(|p| p.base_url.clone())
                 .unwrap_or_else(|| "https://api.z.ai/v1".to_owned()),
             default_model: provider_config
                 .map(|p| p.default_model.clone())
-                .unwrap_or_else(|| "z-pro".to_owned()),
+                .unwrap_or_else(|| "glm-5.1".to_owned()),
             timeout_secs: provider_config.map(|p| p.timeout_secs).unwrap_or(120),
             max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
         });
         registry.register("zai", Arc::new(zai));
+    }
+
+    // Google Gemini — adapter nativo
+    {
+        let api_key = resolve_api_key("gemini", config).unwrap_or_default();
+        let provider_config = config.providers.get("gemini");
+        let gemini = GeminiAdapter::new(GeminiConfig {
+            api_key,
+            base_url: provider_config
+                .and_then(|p| p.base_url.clone())
+                .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_owned()),
+            default_model: provider_config
+                .map(|p| p.default_model.clone())
+                .unwrap_or_else(|| "gemini-2.5-flash".to_owned()),
+            timeout_secs: provider_config.map(|p| p.timeout_secs).unwrap_or(120),
+            max_retries: provider_config.map(|p| p.max_retries).unwrap_or(3),
+        });
+        registry.register("gemini", Arc::new(gemini));
     }
 
     if !config.profile.default_provider.is_empty() {
@@ -144,37 +172,4 @@ pub async fn build_registry(config: &Config) -> anyhow::Result<ProviderRegistry>
     }
 
     Ok(registry)
-}
-
-/// Resolve um alias de modelo (`fast`, `smart`, `code`, `ultra`) para o nome real.
-/// Se o alias não é reconhecido, retorna o original.
-pub fn resolve_model_alias(model: &str, provider: &str) -> String {
-    match model {
-        "fast" => match provider {
-            "anthropic" => "claude-3-5-haiku-20241022",
-            "openai" | "copilot" => "gpt-4o-mini",
-            "openrouter" => "openai/gpt-4o-mini",
-            _ => model,
-        },
-        "smart" => match provider {
-            "anthropic" => "claude-3-5-sonnet-20241022",
-            "openai" | "copilot" => "gpt-4o",
-            "openrouter" => "anthropic/claude-3-5-sonnet",
-            _ => model,
-        },
-        "ultra" => match provider {
-            "anthropic" => "claude-opus-4-5",
-            "openai" | "copilot" => "gpt-4.5-preview",
-            "openrouter" => "anthropic/claude-opus-4-5",
-            _ => model,
-        },
-        "code" => match provider {
-            "anthropic" => "claude-3-5-sonnet-20241022",
-            "openai" | "copilot" => "gpt-4o",
-            "openrouter" => "openai/gpt-4o",
-            _ => model,
-        },
-        _ => model,
-    }
-    .to_owned()
 }

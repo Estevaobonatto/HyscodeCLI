@@ -17,3 +17,6 @@ pub mod zai;
 
 #[cfg(feature = "hyscode")]
 pub mod hyscode;
+
+#[cfg(feature = "gemini")]
+pub mod gemini;

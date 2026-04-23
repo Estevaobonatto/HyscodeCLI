@@ -2,7 +2,10 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
     Frame,
 };
 
@@ -17,7 +20,7 @@ use super::theme::Theme;
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /// Frames do cursor de digitação animado.
-const TYPING_CURSOR: &[&str] = &["▌", "▐", "│", " " ];
+const TYPING_CURSOR: &[&str] = &["▌", "▐", "│", " "];
 
 fn spinner_frame(frame: u64) -> &'static str {
     SPINNER[(frame as usize) % SPINNER.len()]
@@ -33,10 +36,10 @@ fn typing_cursor(frame: u64) -> &'static str {
 
 fn role_accent(role: MessageRole, _theme: Theme) -> Color {
     match role {
-        MessageRole::User => Color::Rgb(139, 233, 253),      // ciano
-        MessageRole::Assistant => Color::Rgb(80, 250, 123),  // verde neon
-        MessageRole::System => Color::Rgb(241, 250, 140),    // amarelo
-        MessageRole::Tool => Color::Rgb(255, 184, 108),      // laranja
+        MessageRole::User => Color::Rgb(139, 233, 253), // ciano
+        MessageRole::Assistant => Color::Rgb(80, 250, 123), // verde neon
+        MessageRole::System => Color::Rgb(241, 250, 140), // amarelo
+        MessageRole::Tool => Color::Rgb(255, 184, 108), // laranja
     }
 }
 
@@ -88,7 +91,8 @@ pub fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
     let left = Paragraph::new(Line::from(vec![
         Span::styled(status_symbol.to_string(), Style::default().fg(status_color)),
         Span::styled(
-            format!("  ·  {}  ·  {}  ·  {}  ·  {}",
+            format!(
+                "  ·  {}  ·  {}  ·  {}  ·  {}",
                 app.current_provider,
                 app.current_model,
                 app.current_agent,
@@ -111,9 +115,13 @@ pub fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
     // Linha divisória sutil
     let line_y = area.y + area.height.saturating_sub(1);
     if line_y >= area.y {
-        let line = Paragraph::new("")
-            .style(Style::default().bg(theme.border()));
-        let line_area = Rect { x: area.x, y: line_y, width: area.width, height: 1 };
+        let line = Paragraph::new("").style(Style::default().bg(theme.border()));
+        let line_area = Rect {
+            x: area.x,
+            y: line_y,
+            width: area.width,
+            height: 1,
+        };
         frame.render_widget(line, line_area);
     }
 }
@@ -125,7 +133,10 @@ pub fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
 pub fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
     let theme = app.theme;
 
-    let inner = area.inner(Margin { horizontal: 1, vertical: 0 });
+    let inner = area.inner(Margin {
+        horizontal: 1,
+        vertical: 0,
+    });
 
     let mut all_lines: Vec<Line> = Vec::new();
 
@@ -151,7 +162,11 @@ pub fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .thumb_symbol("│");
 
     let mut state = ScrollbarState::new(
-        app.messages.iter().map(|m| m.blocks.len() + 2).sum::<usize>().saturating_sub(inner.height as usize)
+        app.messages
+            .iter()
+            .map(|m| m.blocks.len() + 2)
+            .sum::<usize>()
+            .saturating_sub(inner.height as usize),
     );
     state = state.position(app.scroll);
     frame.render_stateful_widget(scrollbar, inner, &mut state);
@@ -166,7 +181,10 @@ fn render_message(msg: &ChatMessage, theme: Theme, frame: u64) -> Vec<Line<'_>> 
     // Header com linha vertical colorida à esquerda
     let header = Line::from(vec![
         Span::styled("│ ", Style::default().fg(accent)),
-        Span::styled(label, Style::default().fg(accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            label,
+            Style::default().fg(accent).add_modifier(Modifier::BOLD),
+        ),
     ]);
     lines.push(header);
 
@@ -177,7 +195,12 @@ fn render_message(msg: &ChatMessage, theme: Theme, frame: u64) -> Vec<Line<'_>> 
                 let md_lines = crate::markdown::render_markdown_lines(text, theme.fg(), accent);
                 for md_line in md_lines {
                     let mut spans = vec![Span::styled("│ ", Style::default().fg(accent))];
-                    spans.extend(md_line.spans.into_iter().map(|s| Span::styled(s.content, s.style)));
+                    spans.extend(
+                        md_line
+                            .spans
+                            .into_iter()
+                            .map(|s| Span::styled(s.content, s.style)),
+                    );
                     lines.push(Line::from(spans));
                 }
             }
@@ -190,7 +213,11 @@ fn render_message(msg: &ChatMessage, theme: Theme, frame: u64) -> Vec<Line<'_>> 
             MessageBlock::ToolCall { name, args } => {
                 lines.extend(render_tool_call(name, args, theme));
             }
-            MessageBlock::ToolResult { name, content, is_error } => {
+            MessageBlock::ToolResult {
+                name,
+                content,
+                is_error,
+            } => {
                 lines.extend(render_tool_result(name, content, *is_error, theme));
             }
             MessageBlock::Thinking(text) => {
@@ -241,7 +268,10 @@ fn render_code_block<'a>(lang: &str, code: &str, theme: Theme, accent: Color) ->
 
     lines.push(Line::from(vec![
         Span::styled("│ ", Style::default().fg(accent)),
-        Span::styled("╰".to_string() + &"─".repeat(24), Style::default().fg(theme.fg_muted())),
+        Span::styled(
+            "╰".to_string() + &"─".repeat(24),
+            Style::default().fg(theme.fg_muted()),
+        ),
     ]));
 
     lines
@@ -256,7 +286,10 @@ fn render_diff_block<'a>(diff_lines: &[String], theme: Theme) -> Vec<Line<'a>> {
 
     lines.push(Line::from(vec![
         Span::styled("│ ", Style::default().fg(theme.accent())),
-        Span::styled("╭─ diff ──────────────────", Style::default().fg(theme.fg_muted())),
+        Span::styled(
+            "╭─ diff ──────────────────",
+            Style::default().fg(theme.fg_muted()),
+        ),
     ]));
 
     for line in diff_lines {
@@ -270,16 +303,16 @@ fn render_diff_block<'a>(diff_lines: &[String], theme: Theme) -> Vec<Line<'a>> {
 
         lines.push(Line::from(vec![
             Span::styled("│ ", Style::default().fg(theme.accent())),
-            Span::styled(
-                format!("│ {}{}", prefix, line),
-                Style::default().fg(color),
-            ),
+            Span::styled(format!("│ {}{}", prefix, line), Style::default().fg(color)),
         ]));
     }
 
     lines.push(Line::from(vec![
         Span::styled("│ ", Style::default().fg(theme.accent())),
-        Span::styled("╰────────────────────────", Style::default().fg(theme.fg_muted())),
+        Span::styled(
+            "╰────────────────────────",
+            Style::default().fg(theme.fg_muted()),
+        ),
     ]));
 
     lines
@@ -296,7 +329,9 @@ fn render_tool_call<'a>(name: &str, args: &str, theme: Theme) -> Vec<Line<'a>> {
         Span::styled("│ ", Style::default().fg(theme.tool_fg())),
         Span::styled(
             format!("◆ Executando: {}", name),
-            Style::default().fg(theme.tool_fg()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.tool_fg())
+                .add_modifier(Modifier::BOLD),
         ),
     ]));
 
@@ -313,9 +348,18 @@ fn render_tool_call<'a>(name: &str, args: &str, theme: Theme) -> Vec<Line<'a>> {
     lines
 }
 
-fn render_tool_result<'a>(name: &str, content: &str, is_error: bool, theme: Theme) -> Vec<Line<'a>> {
+fn render_tool_result<'a>(
+    name: &str,
+    content: &str,
+    is_error: bool,
+    theme: Theme,
+) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
-    let color = if is_error { theme.error() } else { theme.success() };
+    let color = if is_error {
+        theme.error()
+    } else {
+        theme.success()
+    };
     let symbol = if is_error { "✖" } else { "✔" };
 
     lines.push(Line::from(vec![
@@ -351,7 +395,9 @@ fn render_thinking<'a>(text: &str, theme: Theme, frame: u64) -> Vec<Line<'a>> {
         Span::styled("│ ", Style::default().fg(theme.fg_muted())),
         Span::styled(
             format!("Pensando{}", dots),
-            Style::default().fg(theme.fg_muted()).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(theme.fg_muted())
+                .add_modifier(Modifier::ITALIC),
         ),
     ]));
 
@@ -360,7 +406,9 @@ fn render_thinking<'a>(text: &str, theme: Theme, frame: u64) -> Vec<Line<'a>> {
             Span::styled("│ ", Style::default().fg(theme.fg_muted())),
             Span::styled(
                 format!("  {}", line),
-                Style::default().fg(theme.thinking_fg()).add_modifier(Modifier::ITALIC),
+                Style::default()
+                    .fg(theme.thinking_fg())
+                    .add_modifier(Modifier::ITALIC),
             ),
         ]));
     }
@@ -377,9 +425,13 @@ pub fn draw_input_bar(frame: &mut Frame, app: &ChatApp, area: Rect) {
 
     // Linha divisória sutil acima do input
     let sep_y = area.y;
-    let sep_area = Rect { x: area.x, y: sep_y, width: area.width, height: 1 };
-    let sep = Paragraph::new("")
-        .style(Style::default().bg(theme.border()));
+    let sep_area = Rect {
+        x: area.x,
+        y: sep_y,
+        width: area.width,
+        height: 1,
+    };
+    let sep = Paragraph::new("").style(Style::default().bg(theme.border()));
     frame.render_widget(sep, sep_area);
 
     let input_area = Rect {
@@ -472,7 +524,9 @@ fn draw_provider_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .enumerate()
         .map(|(i, &p)| {
             let style = if i == app.popup_selection {
-                Style::default().bg(theme.accent()).fg(Color::Rgb(10, 10, 14))
+                Style::default()
+                    .bg(theme.accent())
+                    .fg(Color::Rgb(10, 10, 14))
             } else {
                 Style::default().fg(theme.fg())
             };
@@ -487,7 +541,9 @@ fn draw_provider_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
                 .border_style(Style::default().fg(theme.border()))
                 .title(Span::styled(
                     " Selecionar Provedor ",
-                    Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent())
+                        .add_modifier(Modifier::BOLD),
                 )),
         )
         .highlight_symbol("▶ ");
@@ -496,23 +552,108 @@ fn draw_provider_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
 }
 
 fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let area = centered_rect(70, 60, area);
+    let area = centered_rect(80, 70, area);
     frame.render_widget(Clear, area);
 
     let theme = app.theme;
-    let models = ChatApp::available_models_for_provider(&app.current_provider);
-    let items: Vec<ListItem> = models
-        .iter()
-        .enumerate()
-        .map(|(i, &m)| {
-            let style = if i == app.popup_selection {
-                Style::default().bg(theme.accent()).fg(Color::Rgb(10, 10, 14))
-            } else {
-                Style::default().fg(theme.fg())
-            };
-            ListItem::new(Line::from(Span::styled(format!(" {} ", m), style)))
-        })
-        .collect();
+    let models = &app.available_models;
+
+    // Cabeçalho da tabela
+    let header_line = Line::from(vec![
+        Span::styled(
+            format!(" {:<28}", "Modelo"),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {:>10}", "Contexto"),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {:>10}", "Max Out"),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {:>14}", "Input/1M"),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!(" {:>14}", "Output/1M"),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+
+    let mut items: Vec<ListItem> = vec![ListItem::new(header_line)];
+
+    items.extend(models.iter().enumerate().map(|(i, m)| {
+        let is_selected = i == app.popup_selection;
+        let bg = if is_selected {
+            theme.accent()
+        } else {
+            Color::Reset
+        };
+        let fg = if is_selected {
+            Color::Rgb(10, 10, 14)
+        } else {
+            theme.fg()
+        };
+        let fg_secondary = if is_selected {
+            Color::Rgb(30, 30, 40)
+        } else {
+            theme.fg_secondary()
+        };
+
+        let ctx = m
+            .context_window
+            .map(|c| format!("{}", c))
+            .unwrap_or_else(|| "?".to_owned());
+        let max_out = m
+            .max_output_tokens
+            .map(|c| format!("{}", c))
+            .unwrap_or_else(|| "?".to_owned());
+
+        let (input_price, output_price) = match &m.pricing {
+            Some(p) => (
+                p.input.map(|v| format!("${:.2}", v)).unwrap_or_else(|| "?".to_owned()),
+                p.output.map(|v| format!("${:.2}", v)).unwrap_or_else(|| "?".to_owned()),
+            ),
+            None => ("N/A".to_owned(), "N/A".to_owned()),
+        };
+
+        let line = Line::from(vec![
+            Span::styled(
+                format!(" {:<28}", m.name.chars().take(28).collect::<String>()),
+                Style::default().fg(fg).bg(bg),
+            ),
+            Span::styled(
+                format!(" {:>10}", ctx),
+                Style::default().fg(fg_secondary).bg(bg),
+            ),
+            Span::styled(
+                format!(" {:>10}", max_out),
+                Style::default().fg(fg_secondary).bg(bg),
+            ),
+            Span::styled(
+                format!(" {:>14}", input_price),
+                Style::default().fg(fg_secondary).bg(bg),
+            ),
+            Span::styled(
+                format!(" {:>14}", output_price),
+                Style::default().fg(fg_secondary).bg(bg),
+            ),
+        ]);
+
+        ListItem::new(line)
+    }));
 
     let list = List::new(items)
         .block(
@@ -521,7 +662,9 @@ fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
                 .border_style(Style::default().fg(theme.border()))
                 .title(Span::styled(
                     format!(" Selecionar Modelo ({}) ", app.current_provider),
-                    Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent())
+                        .add_modifier(Modifier::BOLD),
                 )),
         )
         .highlight_symbol("▶ ");
@@ -561,7 +704,11 @@ fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         app.current_model,
         app.current_agent,
         app.thinking_level.as_str(),
-        if app.theme == Theme::Light { "claro" } else { "escuro" },
+        if app.theme == Theme::Light {
+            "claro"
+        } else {
+            "escuro"
+        },
     );
 
     let paragraph = Paragraph::new(config_text)
@@ -571,7 +718,9 @@ fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
                 .border_style(Style::default().fg(theme.border()))
                 .title(Span::styled(
                     " Configurações ",
-                    Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent())
+                        .add_modifier(Modifier::BOLD),
                 )),
         )
         .wrap(Wrap { trim: false });
@@ -590,7 +739,9 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
         .enumerate()
         .map(|(i, &a)| {
             let style = if i == app.popup_selection {
-                Style::default().bg(theme.accent()).fg(Color::Rgb(10, 10, 14))
+                Style::default()
+                    .bg(theme.accent())
+                    .fg(Color::Rgb(10, 10, 14))
             } else {
                 Style::default().fg(theme.fg())
             };
@@ -605,7 +756,9 @@ fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
                 .border_style(Style::default().fg(theme.border()))
                 .title(Span::styled(
                     " Selecionar Agente ",
-                    Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent())
+                        .add_modifier(Modifier::BOLD),
                 )),
         )
         .highlight_symbol("▶ ");
@@ -635,14 +788,19 @@ pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
     let mut text = Text::from(vec![
         Line::from(Span::styled(
             "Comandos disponíveis",
-            Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.accent())
+                .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
     ]);
 
     for (cmd, desc) in commands {
         text.lines.push(Line::from(vec![
-            Span::styled(format!("{:12}", cmd), Style::default().fg(theme.accent_secondary())),
+            Span::styled(
+                format!("{:12}", cmd),
+                Style::default().fg(theme.accent_secondary()),
+            ),
             Span::styled(desc, Style::default().fg(theme.fg())),
         ]));
     }
@@ -650,7 +808,9 @@ pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
     text.lines.push(Line::from(""));
     text.lines.push(Line::from(Span::styled(
         "Atalhos:",
-        Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(theme.accent())
+            .add_modifier(Modifier::BOLD),
     )));
     text.lines.push(Line::from(vec![
         Span::styled("↑/↓       ", Style::default().fg(theme.accent_secondary())),
@@ -676,7 +836,9 @@ pub fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
                 .border_style(Style::default().fg(theme.border()))
                 .title(Span::styled(
                     " Ajuda ",
-                    Style::default().fg(theme.accent()).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent())
+                        .add_modifier(Modifier::BOLD),
                 )),
         )
         .wrap(Wrap { trim: false });

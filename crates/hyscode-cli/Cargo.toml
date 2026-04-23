@@ -18,7 +18,7 @@ hyscode-core    = { path = "../hyscode-core" }
 hyscode-engine  = { path = "../hyscode-engine" }
 hyscode-ui      = { path = "../hyscode-ui" }
 hyscode-config  = { path = "../hyscode-config" }
-hyscode-provider = { path = "../hyscode-provider" }
+hyscode-provider = { path = "../hyscode-provider", features = ["openrouter", "zai", "copilot"] }
 hyscode-tools   = { path = "../hyscode-tools" }
 
 clap       = { workspace = true }

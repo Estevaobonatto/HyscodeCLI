@@ -1,5 +1,6 @@
-use hyscode_core::models::usage::TokenUsage;
 use crate::tui::theme::Theme;
+use hyscode_core::models::provider::ModelInfo;
+use hyscode_core::models::usage::TokenUsage;
 
 /// Bloco de conteúdo dentro de uma mensagem de chat.
 /// Permite renderização especializada por tipo.
@@ -14,7 +15,11 @@ pub enum MessageBlock {
     /// Chamada de ferramenta.
     ToolCall { name: String, args: String },
     /// Resultado de ferramenta.
-    ToolResult { name: String, content: String, is_error: bool },
+    ToolResult {
+        name: String,
+        content: String,
+        is_error: bool,
+    },
     /// Bloco de thinking/raciocínio interno.
     Thinking(String),
 }
@@ -175,14 +180,23 @@ pub struct ChatApp {
     pub token_usage: Option<TokenUsage>,
     pub theme: Theme,
     pub current_agent: String,
+    /// Modelos disponíveis para o provedor atual (buscados dinamicamente do provider).
+    pub available_models: Vec<ModelInfo>,
     /// Frame de animação (incrementado a cada tick) para efeitos visuais.
     pub animation_frame: u64,
     /// Índice selecionado na palette de comandos (None = fechada).
     pub command_palette_selection: Option<usize>,
+    /// Quando Some, indica que o provedor mudou e os modelos devem ser recarregados.
+    pub needs_provider_refresh: Option<String>,
 }
 
 impl ChatApp {
-    pub fn new(provider: String, model: String, theme: Theme) -> Self {
+    pub fn new(
+        provider: String,
+        model: String,
+        available_models: Vec<ModelInfo>,
+        theme: Theme,
+    ) -> Self {
         let mut app = Self {
             messages: Vec::new(),
             input: String::new(),
@@ -191,6 +205,7 @@ impl ChatApp {
             status: AppStatus::Idle,
             current_provider: provider,
             current_model: model,
+            available_models,
             thinking_level: ThinkingLevel::Default,
             modal: None,
             popup_selection: 0,
@@ -203,6 +218,7 @@ impl ChatApp {
             current_agent: "default".to_owned(),
             animation_frame: 0,
             command_palette_selection: None,
+            needs_provider_refresh: None,
         };
         app.add_system_message(
             "Bem-vindo ao Hyscode! Digite /help para ver os comandos disponíveis.",
@@ -247,7 +263,9 @@ impl ChatApp {
         if filtered.is_empty() {
             self.command_palette_selection = None;
         } else {
-            let sel = self.command_palette_selection.unwrap_or(0)
+            let sel = self
+                .command_palette_selection
+                .unwrap_or(0)
                 .min(filtered.len().saturating_sub(1));
             self.command_palette_selection = Some(sel);
         }
@@ -418,6 +436,11 @@ impl ChatApp {
         self.input.starts_with('/')
     }
 
+    pub fn set_available_models(&mut self, models: Vec<ModelInfo>) {
+        self.available_models = models;
+        self.popup_selection = 0;
+    }
+
     pub fn available_providers() -> &'static [&'static str] {
         &[
             "openai",
@@ -426,32 +449,7 @@ impl ChatApp {
             "openrouter",
             "zai",
             "hyscode",
+            "gemini",
         ]
-    }
-
-    pub fn available_models_for_provider(provider: &str) -> &'static [&'static str] {
-        match provider {
-            "openai" => &[
-                "gpt-4o",
-                "gpt-4o-mini",
-                "gpt-4-turbo",
-                "o1-preview",
-                "o1-mini",
-            ],
-            "anthropic" => &[
-                "claude-3-5-sonnet-20241022",
-                "claude-3-5-haiku-20241022",
-                "claude-3-opus-20240229",
-            ],
-            "copilot" => &["gpt-4o-copilot", "claude-3.5-sonnet-copilot"],
-            "openrouter" => &[
-                "openai/gpt-4o",
-                "anthropic/claude-3.5-sonnet",
-                "google/gemini-pro-1.5",
-            ],
-            "zai" => &["zai-large"],
-            "hyscode" => &["hyscode-smart", "hyscode-fast"],
-            _ => &["default"],
-        }
     }
 }
