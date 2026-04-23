@@ -1,88 +1,60 @@
 use hyscode_core::models::usage::TokenUsage;
+use crate::tui::theme::Theme;
 
-/// Tema da interface TUI.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Theme {
-    #[default]
-    Dark,
-    Light,
+/// Bloco de conteúdo dentro de uma mensagem de chat.
+/// Permite renderização especializada por tipo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MessageBlock {
+    /// Texto simples ou Markdown.
+    Text(String),
+    /// Bloco de código com linguagem opcional.
+    Code { lang: String, code: String },
+    /// Diff de código (linhas com prefixo + ou -).
+    Diff { lines: Vec<String> },
+    /// Chamada de ferramenta.
+    ToolCall { name: String, args: String },
+    /// Resultado de ferramenta.
+    ToolResult { name: String, content: String, is_error: bool },
+    /// Bloco de thinking/raciocínio interno.
+    Thinking(String),
 }
 
-impl std::str::FromStr for Theme {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "light" => Ok(Theme::Light),
-            _ => Ok(Theme::Dark),
-        }
-    }
-}
-
-impl Theme {
-    pub fn bg(&self) -> ratatui::style::Color {
-        match self {
-            Theme::Dark => ratatui::style::Color::Black,
-            Theme::Light => ratatui::style::Color::White,
-        }
-    }
-
-    pub fn fg(&self) -> ratatui::style::Color {
-        match self {
-            Theme::Dark => ratatui::style::Color::White,
-            Theme::Light => ratatui::style::Color::Black,
-        }
-    }
-
-    pub fn fg_secondary(&self) -> ratatui::style::Color {
-        match self {
-            Theme::Dark => ratatui::style::Color::Gray,
-            Theme::Light => ratatui::style::Color::DarkGray,
-        }
-    }
-
-    pub fn border(&self) -> ratatui::style::Color {
-        match self {
-            Theme::Dark => ratatui::style::Color::DarkGray,
-            Theme::Light => ratatui::style::Color::Gray,
-        }
-    }
-
-    pub fn highlight(&self) -> ratatui::style::Color {
-        ratatui::style::Color::Cyan
-    }
-}
-
-/// Estado da aplicação de chat TUI.
-pub struct ChatApp {
-    pub messages: Vec<ChatMessage>,
-    pub input: String,
-    pub input_cursor: usize,
-    pub scroll: usize,
-    pub status: AppStatus,
-    pub current_provider: String,
-    pub current_model: String,
-    pub thinking_level: ThinkingLevel,
-    pub modal: Option<Modal>,
-    pub popup_selection: usize,
-    pub show_help: bool,
-    pub exit: bool,
-    pub pending_command: Option<SlashCommand>,
-    /// System prompt customizado pelo ContextBuilder.
-    pub system_prompt: Option<String>,
-    /// Uso de tokens da última resposta.
-    pub token_usage: Option<TokenUsage>,
-    /// Tema atual da interface.
-    pub theme: Theme,
-    /// Perfil de agente atual.
-    pub current_agent: String,
-}
-
-#[derive(Debug, Clone)]
+/// Mensagem renderizada no chat.
 pub struct ChatMessage {
     pub role: MessageRole,
-    pub content: String,
+    pub blocks: Vec<MessageBlock>,
+    pub raw_content: String,
     pub is_streaming: bool,
+}
+
+impl ChatMessage {
+    pub fn text(role: MessageRole, content: impl Into<String>) -> Self {
+        let s = content.into();
+        Self {
+            role,
+            raw_content: s.clone(),
+            blocks: vec![MessageBlock::Text(s)],
+            is_streaming: false,
+        }
+    }
+
+    pub fn with_blocks(role: MessageRole, blocks: Vec<MessageBlock>, raw: String) -> Self {
+        Self {
+            role,
+            blocks,
+            raw_content: raw,
+            is_streaming: false,
+        }
+    }
+
+    pub fn push_text(&mut self, text: &str) {
+        self.raw_content.push_str(text);
+        if let Some(MessageBlock::Text(ref mut existing)) = self.blocks.last_mut() {
+            existing.push_str(text);
+        } else {
+            self.blocks.push(MessageBlock::Text(text.to_owned()));
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,6 +156,31 @@ impl SlashCommand {
     }
 }
 
+/// Estado da aplicação de chat TUI.
+pub struct ChatApp {
+    pub messages: Vec<ChatMessage>,
+    pub input: String,
+    pub input_cursor: usize,
+    pub scroll: usize,
+    pub status: AppStatus,
+    pub current_provider: String,
+    pub current_model: String,
+    pub thinking_level: ThinkingLevel,
+    pub modal: Option<Modal>,
+    pub popup_selection: usize,
+    pub show_help: bool,
+    pub exit: bool,
+    pub pending_command: Option<SlashCommand>,
+    pub system_prompt: Option<String>,
+    pub token_usage: Option<TokenUsage>,
+    pub theme: Theme,
+    pub current_agent: String,
+    /// Frame de animação (incrementado a cada tick) para efeitos visuais.
+    pub animation_frame: u64,
+    /// Índice selecionado na palette de comandos (None = fechada).
+    pub command_palette_selection: Option<usize>,
+}
+
 impl ChatApp {
     pub fn new(provider: String, model: String, theme: Theme) -> Self {
         let mut app = Self {
@@ -204,6 +201,8 @@ impl ChatApp {
             token_usage: None,
             theme,
             current_agent: "default".to_owned(),
+            animation_frame: 0,
+            command_palette_selection: None,
         };
         app.add_system_message(
             "Bem-vindo ao Hyscode! Digite /help para ver os comandos disponíveis.",
@@ -211,12 +210,78 @@ impl ChatApp {
         app
     }
 
-    /// Define o system prompt customizado para esta sessão.
+    pub fn tick(&mut self) {
+        self.animation_frame = self.animation_frame.wrapping_add(1);
+    }
+
+    pub fn available_commands() -> &'static [(&'static str, &'static str)] {
+        &[
+            ("/provider", "Seleciona o provedor de LLM"),
+            ("/models", "Seleciona o modelo e nível de pensamento"),
+            ("/config", "Abre painel de configurações"),
+            ("/agent", "Muda o agente/perfil"),
+            ("/clear", "Limpa o histórico de chat"),
+            ("/help", "Mostra ajuda de comandos"),
+            ("/exit", "Sai da aplicação"),
+        ]
+    }
+
+    pub fn filtered_commands(&self) -> Vec<(&'static str, &'static str)> {
+        if !self.is_input_command() {
+            return Vec::new();
+        }
+        let query = self.input[1..].to_lowercase();
+        Self::available_commands()
+            .iter()
+            .filter(|(cmd, _)| cmd.to_lowercase().contains(&query))
+            .copied()
+            .collect()
+    }
+
+    pub fn update_command_palette(&mut self) {
+        if !self.is_input_command() {
+            self.command_palette_selection = None;
+            return;
+        }
+        let filtered = self.filtered_commands();
+        if filtered.is_empty() {
+            self.command_palette_selection = None;
+        } else {
+            let sel = self.command_palette_selection.unwrap_or(0)
+                .min(filtered.len().saturating_sub(1));
+            self.command_palette_selection = Some(sel);
+        }
+    }
+
+    pub fn palette_prev(&mut self) {
+        if let Some(sel) = self.command_palette_selection {
+            self.command_palette_selection = Some(sel.saturating_sub(1));
+        }
+    }
+
+    pub fn palette_next(&mut self) {
+        let filtered = self.filtered_commands();
+        if let Some(sel) = self.command_palette_selection {
+            let new = (sel + 1).min(filtered.len().saturating_sub(1));
+            self.command_palette_selection = Some(new);
+        }
+    }
+
+    pub fn palette_select(&mut self) {
+        let filtered = self.filtered_commands();
+        if let Some(sel) = self.command_palette_selection {
+            if let Some(&(cmd, _)) = filtered.get(sel) {
+                self.input = cmd.to_owned();
+                self.input_cursor = self.input.len();
+                self.command_palette_selection = None;
+            }
+        }
+    }
+
     pub fn set_system_prompt(&mut self, prompt: String) {
         self.system_prompt = Some(prompt);
     }
 
-    /// Altera o perfil de agente e atualiza o system prompt correspondente.
     pub fn set_agent(&mut self, agent: &str) {
         self.current_agent = agent.to_owned();
         let prompt = match agent {
@@ -236,17 +301,13 @@ impl ChatApp {
         self.system_prompt = Some(prompt.to_owned());
     }
 
-    /// Atualiza o uso de tokens com dados do último chunk.
     pub fn update_token_usage(&mut self, usage: TokenUsage) {
         self.token_usage = Some(usage);
     }
 
     pub fn add_message(&mut self, role: MessageRole, content: impl Into<String>) {
-        self.messages.push(ChatMessage {
-            role,
-            content: content.into(),
-            is_streaming: false,
-        });
+        let text = content.into();
+        self.messages.push(ChatMessage::text(role, text));
         self.scroll_to_bottom();
     }
 
@@ -256,7 +317,7 @@ impl ChatApp {
 
     pub fn append_to_last(&mut self, text: &str) {
         if let Some(last) = self.messages.last_mut() {
-            last.content.push_str(text);
+            last.push_text(text);
         }
     }
 

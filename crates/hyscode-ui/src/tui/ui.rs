@@ -1,31 +1,34 @@
 use ratatui::{
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Wrap,
-    },
+    layout::{Constraint, Direction, Layout},
     Frame,
 };
 
-use super::app::{AppStatus, ChatApp, ChatMessage, MessageRole, Modal, Theme};
+use super::app::ChatApp;
+use super::components::{draw_chat_area, draw_command_palette, draw_header, draw_help, draw_input_bar, draw_modal};
 
 pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
     let area = frame.size();
 
+    // Layout principal: header (2 linhas) | chat | input (3 linhas) | footer (1 linha)
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(2),  // header minimalista
+            Constraint::Min(1),     // chat area
+            Constraint::Length(3),  // input bar
+            Constraint::Length(1),  // footer sutil
         ])
         .split(area);
 
     draw_header(frame, app, main_chunks[0]);
     draw_chat_area(frame, app, main_chunks[1]);
     draw_input_bar(frame, app, main_chunks[2]);
+
+    if app.command_palette_selection.is_some() {
+        draw_command_palette(frame, app, main_chunks[2]);
+    }
+
+    draw_footer(frame, app, main_chunks[3]);
 
     if let Some(ref modal) = app.modal {
         draw_modal(frame, app, modal.clone(), area);
@@ -36,413 +39,18 @@ pub fn draw(frame: &mut Frame, app: &mut ChatApp) {
     }
 }
 
-fn draw_header(frame: &mut Frame, app: &ChatApp, area: Rect) {
-    let status_color = match app.status {
-        AppStatus::Idle => Color::Green,
-        AppStatus::Loading => Color::Yellow,
-        AppStatus::Streaming => Color::Cyan,
-        AppStatus::Error => Color::Red,
+fn draw_footer(frame: &mut Frame, app: &ChatApp, area: ratatui::layout::Rect) {
+    use ratatui::style::{Style, Color};
+    use ratatui::widgets::Paragraph;
+    let theme = app.theme;
+    let status = match app.status {
+        super::app::AppStatus::Idle => "pronto",
+        super::app::AppStatus::Loading => "carregando...",
+        super::app::AppStatus::Streaming => "recebendo...",
+        super::app::AppStatus::Error => "erro",
     };
-
-    let status_text = match app.status {
-        AppStatus::Idle => "●",
-        AppStatus::Loading => "◐",
-        AppStatus::Streaming => "◉",
-        AppStatus::Error => "✖",
-    };
-
-    let header_text = format!(
-        " {} Hyscode  |  Provedor: {}  |  Modelo: {}  |  Agente: {}  |  Pensamento: {} ",
-        status_text,
-        app.current_provider,
-        app.current_model,
-        app.current_agent,
-        app.thinking_level.as_str()
-    );
-
-    let header = Paragraph::new(header_text)
-        .style(Style::default().fg(app.theme.fg()).bg(app.theme.bg()))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(status_color))
-                .title(Span::styled(
-                    " HyscodeCLI ",
-                    Style::default()
-                        .fg(app.theme.highlight())
-                        .add_modifier(Modifier::BOLD),
-                )),
-        )
-        .alignment(Alignment::Center);
-
-    frame.render_widget(header, area);
-}
-
-fn draw_chat_area(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(app.theme.border()))
-        .title(Span::styled(
-            " Chat ",
-            Style::default().fg(app.theme.fg_secondary()),
-        ));
-
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let messages: Vec<Line> = app
-        .messages
-        .iter()
-        .flat_map(|m| render_message(m, app.theme))
-        .collect();
-
-    let text = Text::from(messages);
-    let paragraph = Paragraph::new(text)
-        .wrap(Wrap { trim: false })
-        .scroll((app.scroll as u16, 0));
-
-    frame.render_widget(paragraph, inner);
-
-    let scrollbar = Scrollbar::default()
-        .orientation(ScrollbarOrientation::VerticalRight)
-        .begin_symbol(Some("↑"))
-        .end_symbol(Some("↓"));
-
-    let mut state = ScrollbarState::new(app.messages.len().saturating_sub(inner.height as usize));
-    state = state.position(app.scroll);
-    frame.render_stateful_widget(scrollbar, inner, &mut state);
-}
-
-fn render_message(msg: &ChatMessage, theme: Theme) -> Vec<Line<'_>> {
-    let (prefix, color) = match msg.role {
-        MessageRole::User => (" Você ", Color::Blue),
-        MessageRole::Assistant => (" Agente ", Color::Green),
-        MessageRole::System => (" Sistema ", Color::Yellow),
-        MessageRole::Tool => (" Ferramenta ", Color::Magenta),
-    };
-
-    let mut lines = Vec::new();
-
-    let header = Line::from(vec![
-        Span::styled(
-            prefix,
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" ─", Style::default().fg(theme.border())),
-    ]);
-    lines.push(header);
-
-    for line in msg.content.lines() {
-        lines.push(Line::from(Span::styled(
-            format!("  {}", line),
-            Style::default().fg(theme.fg()),
-        )));
-    }
-
-    if msg.is_streaming {
-        lines.push(Line::from(Span::styled(
-            "  ▌",
-            Style::default()
-                .fg(theme.highlight())
-                .add_modifier(Modifier::SLOW_BLINK),
-        )));
-    }
-
-    lines.push(Line::from(""));
-    lines
-}
-
-fn draw_input_bar(frame: &mut Frame, app: &ChatApp, area: Rect) {
-    let border_color = if app.is_input_command() {
-        Color::Yellow
-    } else {
-        app.theme.border()
-    };
-
-    let token_info = match &app.token_usage {
-        Some(u) if u.total_tokens > 0 => {
-            format!(" Tokens: {}↑ {}↓ ", u.prompt_tokens, u.completion_tokens)
-        }
-        _ => " Mensagem ".to_owned(),
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .title(Span::styled(
-            token_info,
-            Style::default().fg(app.theme.fg_secondary()),
-        ));
-
-    let input = Paragraph::new(app.input.as_str())
-        .style(Style::default().fg(app.theme.fg()))
-        .block(block)
-        .wrap(Wrap { trim: false });
-
-    frame.render_widget(input, area);
-
-    let cursor_x = area.x + 1 + app.input_cursor as u16;
-    let cursor_y = area.y + 1;
-    frame.set_cursor(cursor_x, cursor_y);
-}
-
-fn draw_modal(frame: &mut Frame, app: &mut ChatApp, modal: Modal, area: Rect) {
-    match modal {
-        Modal::ProviderSelection => draw_provider_selection(frame, app, area),
-        Modal::ModelSelection => draw_model_selection(frame, app, area),
-        Modal::ConfigPanel => draw_config_panel(frame, app, area),
-        Modal::AgentSelection => draw_agent_selection(frame, app, area),
-    }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
-
-fn draw_provider_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let area = centered_rect(60, 50, area);
-    frame.render_widget(Clear, area);
-
-    let providers = ChatApp::available_providers();
-    let items: Vec<ListItem> = providers
-        .iter()
-        .enumerate()
-        .map(|(i, &p)| {
-            let style = if i == app.popup_selection {
-                Style::default().bg(Color::Blue).fg(app.theme.fg())
-            } else {
-                Style::default().fg(app.theme.fg())
-            };
-            ListItem::new(Line::from(Span::styled(format!(" {} ", p), style)))
-        })
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    " Selecionar Provedor ",
-                    Style::default()
-                        .fg(app.theme.highlight())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .border_style(Style::default().fg(app.theme.highlight())),
-        )
-        .highlight_symbol("▶ ");
-
-    frame.render_widget(list, area);
-}
-
-fn draw_model_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let area = centered_rect(70, 60, area);
-    frame.render_widget(Clear, area);
-
-    let models = ChatApp::available_models_for_provider(&app.current_provider);
-    let items: Vec<ListItem> = models
-        .iter()
-        .enumerate()
-        .map(|(i, &m)| {
-            let style = if i == app.popup_selection {
-                Style::default().bg(Color::Blue).fg(app.theme.fg())
-            } else {
-                Style::default().fg(app.theme.fg())
-            };
-            ListItem::new(Line::from(Span::styled(format!(" {} ", m), style)))
-        })
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    format!(" Selecionar Modelo ({})", app.current_provider),
-                    Style::default()
-                        .fg(app.theme.highlight())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .border_style(Style::default().fg(app.theme.highlight())),
-        )
-        .highlight_symbol("▶ ");
-
-    frame.render_widget(list, area);
-
-    let info_area = Rect {
-        x: area.x + 2,
-        y: area.y + area.height - 2,
-        width: area.width - 4,
-        height: 1,
-    };
-
-    let info = Paragraph::new("Tab: nível de pensamento | Enter: selecionar | Esc: fechar")
-        .style(Style::default().fg(app.theme.fg_secondary()));
-    frame.render_widget(info, info_area);
-}
-
-fn draw_config_panel(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let area = centered_rect(60, 50, area);
-    frame.render_widget(Clear, area);
-
-    let config_text = format!(
-        " Provedor atual:    {}\n\
-         Modelo atual:      {}\n\
-         Agente atual:      {}\n\
-         Nível pensamento:  {}\n\
-         Tema:              {}\n\
-         \n\
-         Use /provider para mudar de provedor.\n\
-         Use /models para mudar de modelo.\n\
-         Use /agent para mudar o perfil.\n\
-         \n\
-         As configurações são salvas automaticamente.",
-        app.current_provider,
-        app.current_model,
-        app.current_agent,
-        app.thinking_level.as_str(),
-        if app.theme == Theme::Light {
-            "claro"
-        } else {
-            "escuro"
-        },
-    );
-
-    let paragraph = Paragraph::new(config_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    " Configurações ",
-                    Style::default()
-                        .fg(app.theme.highlight())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .border_style(Style::default().fg(app.theme.highlight())),
-        )
-        .wrap(Wrap { trim: false });
-
-    frame.render_widget(paragraph, area);
-}
-
-fn draw_agent_selection(frame: &mut Frame, app: &mut ChatApp, area: Rect) {
-    let area = centered_rect(60, 40, area);
-    frame.render_widget(Clear, area);
-
-    let agents = ["default", "code-review", "architecture", "debug"];
-    let items: Vec<ListItem> = agents
-        .iter()
-        .enumerate()
-        .map(|(i, &a)| {
-            let style = if i == app.popup_selection {
-                Style::default().bg(Color::Blue).fg(app.theme.fg())
-            } else {
-                Style::default().fg(app.theme.fg())
-            };
-            ListItem::new(Line::from(Span::styled(format!(" {} ", a), style)))
-        })
-        .collect();
-
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    " Selecionar Agente ",
-                    Style::default()
-                        .fg(app.theme.highlight())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .border_style(Style::default().fg(app.theme.highlight())),
-        )
-        .highlight_symbol("▶ ");
-
-    frame.render_widget(list, area);
-}
-
-fn draw_help(frame: &mut Frame, app: &ChatApp, area: Rect) {
-    let area = centered_rect(70, 70, area);
-    frame.render_widget(Clear, area);
-
-    let commands = vec![
-        ("/provider", "Seleciona o provedor de LLM"),
-        ("/models", "Seleciona o modelo e nível de pensamento"),
-        ("/config", "Abre painel de configurações"),
-        ("/agent", "Muda o agente/perfil"),
-        ("/clear", "Limpa o histórico de chat"),
-        ("/help", "Mostra esta ajuda"),
-        ("/exit", "Sai da aplicação"),
-    ];
-
-    let mut text = Text::from(vec![
-        Line::from(Span::styled(
-            "Comandos disponíveis",
-            Style::default()
-                .fg(app.theme.highlight())
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-    ]);
-
-    for (cmd, desc) in commands {
-        text.lines.push(Line::from(vec![
-            Span::styled(format!("{:12}", cmd), Style::default().fg(Color::Yellow)),
-            Span::styled(desc, Style::default().fg(app.theme.fg())),
-        ]));
-    }
-
-    text.lines.push(Line::from(""));
-    text.lines.push(Line::from(Span::styled(
-        "Atalhos:",
-        Style::default()
-            .fg(app.theme.highlight())
-            .add_modifier(Modifier::BOLD),
-    )));
-    text.lines.push(Line::from(vec![
-        Span::styled("↑/↓       ", Style::default().fg(Color::Yellow)),
-        Span::styled("Scroll das mensagens", Style::default().fg(app.theme.fg())),
-    ]));
-    text.lines.push(Line::from(vec![
-        Span::styled("PgUp/PgDn ", Style::default().fg(Color::Yellow)),
-        Span::styled("Scroll rápido", Style::default().fg(app.theme.fg())),
-    ]));
-    text.lines.push(Line::from(vec![
-        Span::styled("Esc       ", Style::default().fg(Color::Yellow)),
-        Span::styled("Fecha modal / ajuda", Style::default().fg(app.theme.fg())),
-    ]));
-    text.lines.push(Line::from(vec![
-        Span::styled("Ctrl+C    ", Style::default().fg(Color::Yellow)),
-        Span::styled("Sai da aplicação", Style::default().fg(app.theme.fg())),
-    ]));
-
-    let paragraph = Paragraph::new(text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(Span::styled(
-                    " Ajuda ",
-                    Style::default()
-                        .fg(app.theme.highlight())
-                        .add_modifier(Modifier::BOLD),
-                ))
-                .border_style(Style::default().fg(app.theme.highlight())),
-        )
-        .wrap(Wrap { trim: false });
-
-    frame.render_widget(paragraph, area);
+    let text = format!(" {} ", status);
+    let footer = Paragraph::new(text)
+        .style(Style::default().fg(theme.fg_muted()).bg(Color::Rgb(15, 15, 20)));
+    frame.render_widget(footer, area);
 }

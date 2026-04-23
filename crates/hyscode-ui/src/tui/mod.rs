@@ -1,5 +1,7 @@
 pub mod app;
+pub mod components;
 pub mod events;
+pub mod theme;
 pub mod ui;
 
 use std::time::Duration;
@@ -18,8 +20,6 @@ use app::ChatApp;
 use events::{handle_event, read_event};
 
 /// Executa o loop principal da aplicação TUI.
-/// Retorna (app, last_user_message) quando o usuário envia uma mensagem.
-/// Se o usuário sair, retorna None.
 pub async fn run_app(app: &mut ChatApp) -> anyhow::Result<Option<String>> {
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
@@ -53,13 +53,14 @@ async fn run_app_loop<B: Backend>(
         if let Some(ev) = event {
             let has_new_message = handle_event(app, ev)?;
             if has_new_message {
-                // Recupera a última mensagem do usuário
                 if let Some(msg) = app.messages.last() {
-                    last_message = Some(msg.content.clone());
+                    last_message = Some(msg.raw_content.clone());
                 }
                 return Ok(last_message);
             }
         }
+
+        app.tick();
 
         if app.exit {
             return Ok(None);

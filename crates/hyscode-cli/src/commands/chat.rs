@@ -12,7 +12,8 @@ use hyscode_engine::{
     context::ContextBuilder, conversation::ConversationManager, maybe_summarize,
     token::TokenEstimator,
 };
-use hyscode_ui::tui::app::{AppStatus, ChatApp, MessageRole, Theme};
+use hyscode_ui::tui::app::{AppStatus, ChatApp, MessageRole};
+use hyscode_ui::tui::theme::Theme;
 use hyscode_ui::tui::events::{handle_event, read_event};
 use hyscode_ui::tui::ui::draw;
 use ratatui::{
@@ -238,7 +239,7 @@ async fn run_chat_loop<B: Backend>(
             let has_new_message = handle_event(app, ev)?;
             if has_new_message {
                 if let Some(last) = app.messages.last() {
-                    let text = last.content.clone();
+                    let text = last.raw_content.clone();
                     if let Err(e) = process_message(
                         provider,
                         model,
@@ -283,7 +284,7 @@ async fn process_message<B: Backend>(
     // Atualiza a última mensagem da UI com o texto limpo
     if clean_text != text {
         if let Some(last) = app.messages.last_mut() {
-            last.content = clean_text.clone();
+            last.raw_content = clean_text.clone();
         }
     }
 
@@ -397,10 +398,10 @@ fn build_messages(app: &ChatApp) -> Vec<Message> {
     for msg in &app.messages {
         let m = match msg.role {
             MessageRole::User => Message::User {
-                content: MessageContent::Text(msg.content.clone()),
+                content: MessageContent::Text(msg.raw_content.clone()),
             },
             MessageRole::Assistant => Message::Assistant {
-                content: Some(msg.content.clone()),
+                content: Some(msg.raw_content.clone()),
                 tool_calls: None,
                 thinking: None,
             },

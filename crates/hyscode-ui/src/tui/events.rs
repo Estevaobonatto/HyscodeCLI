@@ -51,8 +51,47 @@ fn handle_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
         return Ok(false);
     }
 
+    // Command palette: intercepta navegação quando input começa com /
+    if app.command_palette_selection.is_some() && app.is_input_command() {
+        match key.code {
+            KeyCode::Esc => {
+                app.command_palette_selection = None;
+                return Ok(false);
+            }
+            KeyCode::Up => {
+                app.palette_prev();
+                return Ok(false);
+            }
+            KeyCode::Down => {
+                app.palette_next();
+                return Ok(false);
+            }
+            KeyCode::Enter => {
+                app.palette_select();
+                return Ok(false);
+            }
+            KeyCode::Char(c) => {
+                app.insert_char(c);
+                app.update_command_palette();
+                return Ok(false);
+            }
+            KeyCode::Backspace => {
+                app.backspace();
+                app.update_command_palette();
+                return Ok(false);
+            }
+            KeyCode::Delete => {
+                app.delete_char();
+                app.update_command_palette();
+                return Ok(false);
+            }
+            _ => {}
+        }
+    }
+
     match key.code {
         KeyCode::Enter => {
+            app.command_palette_selection = None;
             if let Some(cmd) = SlashCommand::parse(&app.input) {
                 app.clear_input();
                 handle_slash_command(app, cmd);
@@ -62,12 +101,15 @@ fn handle_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
         }
         KeyCode::Char(c) => {
             app.insert_char(c);
+            app.update_command_palette();
         }
         KeyCode::Backspace => {
             app.backspace();
+            app.update_command_palette();
         }
         KeyCode::Delete => {
             app.delete_char();
+            app.update_command_palette();
         }
         KeyCode::Left => {
             app.move_cursor_left();
@@ -95,6 +137,7 @@ fn handle_key(app: &mut ChatApp, key: KeyEvent) -> anyhow::Result<bool> {
         }
         KeyCode::Esc => {
             app.clear_input();
+            app.command_palette_selection = None;
         }
         _ => {}
     }
